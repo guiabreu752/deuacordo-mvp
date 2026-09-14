@@ -1,271 +1,343 @@
 'use client'
-import { useState, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
 
-type Etapa = 'empresa' | 'produto' | 'baseline' | 'confirma' | 'ok'
+const E = '#10B981'   // emerald
+const NAVY = '#0F172A'
+const SLATE = '#F8FAFC'
+const MUTED = '#64748B'
+const BORDER = '#E2E8F0'
 
-const vazio = {
-  empresa:'', cnpj:'', nome:'', email:'', fone:'',
-  produto:'', descricao:'', quantidade:'', unidade:'un',
-  preco_atual:'', fornecedor:'', preco_alvo:'', prazo:'15'
+function BtnPrimario({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link href={href} style={{
+      display:'inline-block', background:E, color:'#fff',
+      padding:'14px 32px', borderRadius:8, fontSize:15, fontWeight:700,
+      textDecoration:'none', letterSpacing:'-0.01em',
+      transition:'opacity .15s',
+    }}
+    onMouseEnter={e=>(e.currentTarget.style.opacity='.88')}
+    onMouseLeave={e=>(e.currentTarget.style.opacity='1')}>
+      {children}
+    </Link>
+  )
 }
 
-function Campo({ label, id, value, onChange, placeholder, type='text', dica='' }:any) {
+function BtnSecundario({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <div style={{marginBottom:'1.1rem'}}>
-      <label htmlFor={id} style={{display:'block',fontSize:12,color:'#0F172A',fontWeight:600,marginBottom:5,textTransform:'uppercase',letterSpacing:'0.05em'}}>{label}</label>
-      <input id={id} type={type} value={value} placeholder={placeholder}
-        onChange={e=>onChange(e.target.value)}
-        style={{width:'100%',padding:'11px 13px',background:'#FFFFFF',border:'1px solid #CBD5E1',borderRadius:8,color:'#0F172A',fontSize:14,outline:'none'}}
-        onFocus={e=>{e.target.style.borderColor='#10B981'; e.target.style.boxShadow='0 0 0 3px rgba(16, 185, 129, 0.15)'}}
-        onBlur={e=>{e.target.style.borderColor='#CBD5E1'; e.target.style.boxShadow='none'}}
-      />
-      {dica && <p style={{fontSize:11,color:'#64748B',marginTop:4}}>{dica}</p>}
+    <Link href={href} style={{
+      display:'inline-block', background:'transparent', color:NAVY,
+      padding:'13px 28px', borderRadius:8, fontSize:15, fontWeight:600,
+      textDecoration:'none', border:`1.5px solid ${BORDER}`,
+    }}>
+      {children}
+    </Link>
+  )
+}
+
+function Stat({ valor, label }: { valor: string; label: string }) {
+  return (
+    <div style={{textAlign:'center', padding:'0 1.5rem'}}>
+      <p style={{fontSize:34, fontWeight:800, color:E, margin:0, letterSpacing:'-0.03em'}}>{valor}</p>
+      <p style={{fontSize:13, color:MUTED, margin:'4px 0 0'}}>{label}</p>
     </div>
   )
 }
 
-function Preview({ atual, alvo }:any) {
-  const a = parseFloat(atual.replace(',','.'))
-  const b = parseFloat(alvo.replace(',','.'))
-  if (!a || !b || b >= a) return null
-  const saving = a - b
-  const pct = (saving/a*100).toFixed(1)
-  const fee = (saving*0.2).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})
-  const liq = (saving*0.8).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})
+function Step({ num, titulo, desc }: { num: string; titulo: string; desc: string }) {
   return (
-    <div style={{background:'#ECFDF5',border:'1px solid #A7F3D0',borderRadius:10,padding:'0.9rem',marginBottom:'1rem'}}>
-      <p style={{fontSize:11,color:'#047857',marginBottom:4,fontWeight:700,letterSpacing:'0.07em'}}>PRÉVIA DO SAVING</p>
-      <p style={{fontSize:24,fontWeight:800,color:'#059669',marginBottom:3}}>{pct}% de economia</p>
-      <p style={{fontSize:12,color:'#065F46'}}>Fee DeuAcordo (20%): {fee} · Economia líquida: <strong>{liq}</strong></p>
-    </div>
-  )
-}
-
-const btn = (primary:boolean, label:string, onClick:any, disabled=false) => (
-  <button onClick={onClick} disabled={disabled} style={{
-    flex: primary?2:1, padding:'13px',
-    background: disabled ? '#A7F3D0' : primary ? '#10B981' : '#F1F5F9',
-    border: primary ? 'none' : '1px solid #CBD5E1',
-    borderRadius:8, color: primary ? '#FFFFFF' : '#334155',
-    fontSize:14, fontWeight: 700, cursor: disabled?'wait':'pointer',
-    transition: 'all 0.2s ease'
-  }}>{label}</button>
-)
-
-export default function Page() {
-  const [etapa, setEtapa] = useState<Etapa>('empresa')
-  const [f, setF] = useState(vazio)
-  const [arquivo, setArquivo] = useState<File|null>(null)
-  const [enviando, setEnviando] = useState(false)
-  const [erro, setErro] = useState('')
-  const set = (k:string) => (v:string) => setF(p=>({...p,[k]:v}))
-  const fileRef = useRef<HTMLInputElement>(null)
-
-  async function enviar() {
-    setEnviando(true); setErro('')
-    try {
-      const { error } = await supabase.from('cotacoes').insert({
-        empresa_nome: f.empresa, cnpj: f.cnpj||null,
-        contato_nome: f.nome, contato_email: f.email, contato_fone: f.fone||null,
-        produto: f.produto, descricao: f.descricao||null,
-        quantidade: f.quantidade||null, unidade: f.unidade,
-        preco_atual: f.preco_atual ? parseFloat(f.preco_atual.replace(',','.')) : null,
-        fornecedor_atual: f.fornecedor||null,
-        tem_nf: !!arquivo,
-        preco_alvo: f.preco_alvo ? parseFloat(f.preco_alvo.replace(',','.')) : null,
-        prazo_dias: parseInt(f.prazo)
-      })
-      if (error) throw error
-      setEtapa('ok')
-    } catch(e:any) {
-      setErro(e.message || 'Erro ao enviar. Tente novamente.')
-    } finally { setEnviando(false) }
-  }
-
-  const card = (children:any) => (
-    <div style={{maxWidth:520,margin:'0 auto',padding:'1rem 1rem 3rem'}}>
-      <div style={{background:'#FFFFFF',border:'1px solid #E2E8F0',borderRadius:14,padding:'1.5rem',boxShadow:'0 10px 25px -5px rgba(15, 23, 42, 0.05)'}}>
-        {children}
+    <div style={{display:'flex', gap:'1.25rem', alignItems:'flex-start'}}>
+      <div style={{
+        width:40, height:40, borderRadius:'50%', background:E,
+        display:'flex', alignItems:'center', justifyContent:'center',
+        fontSize:15, fontWeight:800, color:'#fff', flexShrink:0,
+      }}>{num}</div>
+      <div>
+        <p style={{fontSize:16, fontWeight:700, color:NAVY, margin:'6px 0 6px'}}>{titulo}</p>
+        <p style={{fontSize:14, color:MUTED, lineHeight:1.65, margin:0}}>{desc}</p>
       </div>
     </div>
   )
+}
 
-  const titulo = (t:string, sub='') => (
-    <div style={{marginBottom:'1.25rem'}}>
-      <h2 style={{fontSize:19,fontWeight:800,color:'#0F172A',marginBottom:sub?4:0}}>{t}</h2>
-      {sub && <p style={{fontSize:13,color:'#64748B'}}>{sub}</p>}
-    </div>
-  )
-
-  const rodape = (voltar:Etapa|null, proximo:()=>void, labelProximo='Continuar →', disabled=false) => (
-    <div style={{display:'flex',gap:8,marginTop:8}}>
-      {voltar && btn(false,'← Voltar',()=>setEtapa(voltar))}
-      {btn(true, labelProximo, proximo, disabled)}
-    </div>
-  )
+export default function LandingPage() {
+  const maxW = { maxWidth:1080, margin:'0 auto', padding:'0 1.5rem' }
 
   return (
-    <div style={{minHeight:'100vh',background:'#F8FAFC'}}>
-      {/* Header */}
-      <header style={{background:'#FFFFFF',borderBottom:'1px solid #E2E8F0',padding:'0.9rem 1.25rem',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-        <span style={{fontWeight:800,fontSize:18,color:'#0F172A'}}>DeuAcordo<span style={{color:'#10B981'}}>.com</span></span>
-        <span style={{fontSize:11,fontWeight:700,color:'#059669',background:'#ECFDF5',border:'1px solid #A7F3D0',padding:'4px 12px',borderRadius:20}}>Gratuito para o comprador</span>
+    <div style={{background:SLATE, color:NAVY, fontFamily:'Inter,system-ui,sans-serif', lineHeight:1.6}}>
+
+      {/* ── HEADER ────────────────────────────────────── */}
+      <header style={{
+        position:'sticky', top:0, zIndex:50,
+        background:'rgba(248,250,252,0.92)',
+        backdropFilter:'blur(12px)',
+        borderBottom:`1px solid ${BORDER}`,
+      }}>
+        <div style={{...maxW, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'1rem 1.5rem'}}>
+          <span style={{fontWeight:800, fontSize:18, color:NAVY, letterSpacing:'-0.02em'}}>
+            DeuAcordo<span style={{color:E}}>.com</span>
+          </span>
+          <nav style={{display:'flex', alignItems:'center', gap:'0.75rem'}}>
+            <span style={{
+              background:'#ECFDF5', color:'#065F46', fontSize:11, fontWeight:700,
+              padding:'3px 10px', borderRadius:20, letterSpacing:'0.05em',
+              border:'1px solid #A7F3D0',
+            }}>
+              SUCCESS FEE
+            </span>
+            <Link href="/empresa" style={{
+              background:E, color:'#fff', padding:'9px 20px', borderRadius:7,
+              fontSize:13, fontWeight:700, textDecoration:'none',
+            }}>
+              Economize já →
+            </Link>
+          </nav>
+        </div>
       </header>
 
-      {/* Hero (só na primeira etapa) */}
-      {etapa === 'empresa' && (
-        <div style={{textAlign:'center',padding:'2.5rem 1rem 1rem',maxWidth:520,margin:'0 auto'}}>
-          <div style={{display:'inline-block',background:'#ECFDF5',border:'1px solid #A7F3D0',color:'#059669',padding:'5px 14px',borderRadius:20,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:'0.9rem'}}>
-            SEM SAVING, SEM CUSTO
+      {/* ── HERO ──────────────────────────────────────── */}
+      <section style={{padding:'6rem 0 4.5rem', textAlign:'center'}}>
+        <div style={maxW}>
+          <div style={{
+            display:'inline-flex', alignItems:'center', gap:8,
+            background:'#ECFDF5', border:'1px solid #6EE7B7',
+            borderRadius:24, padding:'6px 16px', marginBottom:'1.75rem',
+          }}>
+            <span style={{
+              width:8, height:8, borderRadius:'50%', background:E,
+              display:'inline-block', animation:'pulse 2s infinite',
+            }}/>
+            <span style={{fontSize:12, fontWeight:600, color:'#065F46', letterSpacing:'0.05em'}}>
+              SEM SAVING, SEM CUSTO — RISCO ZERO PARA VOCÊ
+            </span>
           </div>
-          <h1 style={{fontSize:28,fontWeight:800,lineHeight:1.25,color:'#0F172A',marginBottom:'0.75rem'}}>
-            Sua empresa está pagando mais do que deveria nas compras?
+
+          <h1 style={{
+            fontSize:'clamp(2rem, 5vw, 3.25rem)', fontWeight:800,
+            lineHeight:1.12, letterSpacing:'-0.03em',
+            margin:'0 auto 1.5rem', maxWidth:780,
+          }}>
+            Sua empresa está pagando mais do que deveria nas compras.{' '}
+            <span style={{color:E}}>Vamos mudar isso.</span>
           </h1>
-          <p style={{fontSize:14,color:'#475569',lineHeight:1.65,marginBottom:'1.5rem'}}>
-            Cadastre o que precisa sourcear. Um negociador busca alternativas e negocia por você.
-            Você só paga <strong style={{color:'#059669',background:'#ECFDF5',padding:'2px 6px',borderRadius:4}}>20% da economia real</strong>.
+
+          <p style={{
+            fontSize:'clamp(1rem, 2vw, 1.2rem)', color:MUTED,
+            maxWidth:580, margin:'0 auto 2.5rem', lineHeight:1.7,
+          }}>
+            Conectamos você a um negociador especializado que busca fornecedores melhores e negocia por você. Você só paga <strong style={{color:NAVY}}>20% da economia real gerada</strong>. Zero risco.
           </p>
-          
-          {/* Contador de saving */}
-          <div style={{background:'#FFFFFF',border:'1px solid #E2E8F0',borderRadius:12,padding:'1rem',display:'flex',alignItems:'center',gap:'1rem',textAlign:'left',marginBottom:'0.5rem',boxShadow:'0 4px 6px -1px rgba(0,0,0,0.03)'}}>
-            <div>
-              <p style={{fontSize:10,color:'#64748B',fontWeight:700,letterSpacing:'0.08em',marginBottom:2}}>SAVING JÁ GERADO</p>
-              <p style={{fontSize:26,fontWeight:800,color:'#10B981'}}>R$ 38.400</p>
-              <p style={{fontSize:11,color:'#64748B'}}>em 3 mesas concluídas</p>
-            </div>
-            <div style={{flex:1}}>
-              <div style={{background:'#E2E8F0',borderRadius:4,height:6,overflow:'hidden'}}>
-                <div style={{width:'73%',background:'#10B981',height:'100%',borderRadius:4}}/>
-              </div>
-              <p style={{fontSize:10,color:'#64748B',marginTop:4,fontWeight:500}}>73% da meta mensal</p>
-            </div>
+
+          <div style={{display:'flex', gap:'1rem', justifyContent:'center', flexWrap:'wrap', marginBottom:'4rem'}}>
+            <BtnPrimario href="/empresa">Economize já →</BtnPrimario>
+            <BtnSecundario href="/consultor">Sou consultor de compras</BtnSecundario>
+          </div>
+
+          {/* Stats bar */}
+          <div style={{
+            display:'flex', justifyContent:'center', flexWrap:'wrap',
+            gap:0, borderTop:`1px solid ${BORDER}`, paddingTop:'3rem',
+            borderBottom:`1px solid ${BORDER}`, paddingBottom:'3rem',
+          }}>
+            <Stat valor="R$ 38.400" label="em saving já gerado" />
+            <div style={{width:1, background:BORDER, margin:'0 0.5rem'}}/>
+            <Stat valor="20%" label="fee só sobre saving real" />
+            <div style={{width:1, background:BORDER, margin:'0 0.5rem'}}/>
+            <Stat valor="100%" label="risco zero para o cliente" />
+            <div style={{width:1, background:BORDER, margin:'0 0.5rem'}}/>
+            <Stat valor="15 dias" label="prazo médio de resultado" />
           </div>
         </div>
-      )}
+      </section>
 
-      {/* ETAPAS */}
-      {etapa === 'empresa' && card(
-        <>
-          {titulo('Dados da sua empresa')}
-          <Campo label="Nome da empresa *" id="emp" value={f.empresa} onChange={set('empresa')} placeholder="Ex: Metalúrgica Souza Ltda"/>
-          <Campo label="CNPJ" id="cnpj" value={f.cnpj} onChange={set('cnpj')} placeholder="00.000.000/0001-00" dica="Opcional"/>
-          <Campo label="Seu nome *" id="nome" value={f.nome} onChange={set('nome')} placeholder="João Silva"/>
-          <Campo label="E-mail *" id="email" type="email" value={f.email} onChange={set('email')} placeholder="joao@empresa.com.br"/>
-          <Campo label="WhatsApp" id="fone" value={f.fone} onChange={set('fone')} placeholder="(11) 99999-9999"/>
-          {erro && <p style={{color:'#DC2626',fontSize:13,marginBottom:8,fontWeight:600}}>{erro}</p>}
-          {rodape(null,()=>{
-            if(!f.empresa||!f.nome||!f.email){setErro('Preencha os campos obrigatórios.');return}
-            setErro('');setEtapa('produto')
-          })}
-        </>
-      )}
-
-      {etapa === 'produto' && card(
-        <>
-          {titulo('O que você precisa sourcear?','Seja específico — quanto mais detalhe, melhor.')}
-          <Campo label="Produto ou serviço *" id="prod" value={f.produto} onChange={set('produto')} placeholder="Ex: Caixas de papelão ondulado 30x20x15cm"/>
-          <Campo label="Descrição técnica" id="desc" value={f.descricao} onChange={set('descricao')} placeholder="Especificações, normas, qualidade..."/>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            <Campo label="Quantidade" id="qtd" value={f.quantidade} onChange={set('quantidade')} placeholder="5.000"/>
-            <div style={{marginBottom:'1.1rem'}}>
-              <label style={{display:'block',fontSize:12,color:'#0F172A',fontWeight:600,marginBottom:5,textTransform:'uppercase',letterSpacing:'0.05em'}}>Unidade</label>
-              <select value={f.unidade} onChange={e=>set('unidade')(e.target.value)}
-                style={{width:'100%',padding:'11px 13px',background:'#FFFFFF',border:'1px solid #CBD5E1',borderRadius:8,color:'#0F172A',fontSize:14}}>
-                {['un','kg','ton','cx','pç','litro','m²','hora'].map(u=><option key={u}>{u}</option>)}
-              </select>
-            </div>
-          </div>
-          {erro && <p style={{color:'#DC2626',fontSize:13,marginBottom:8,fontWeight:600}}>{erro}</p>}
-          {rodape('empresa',()=>{if(!f.produto){setErro('Informe o produto.');return}setErro('');setEtapa('baseline')})}
-        </>
-      )}
-
-      {etapa === 'baseline' && card(
-        <>
-          {titulo('Qual o preço que você paga hoje?','Base para calcular o saving real.')}
-          <Campo label="Preço atual por unidade (R$)" id="pa" value={f.preco_atual} onChange={set('preco_atual')} placeholder="Ex: 3,50" dica="Use vírgula ou ponto: 3,50 ou 3.50"/>
-          <Campo label="Fornecedor atual" id="forn" value={f.fornecedor} onChange={set('fornecedor')} placeholder="Ex: Embalagens Norte Ltda" dica="Não entraremos em contato com ele"/>
-
-          {/* Upload NF */}
-          <div style={{marginBottom:'1.1rem'}}>
-            <label style={{display:'block',fontSize:12,color:'#0F172A',fontWeight:600,marginBottom:5,textTransform:'uppercase',letterSpacing:'0.05em'}}>NF ou orçamento atual</label>
-            <label style={{display:'block',border:'2px dashed #CBD5E1',borderRadius:8,padding:'1rem',textAlign:'center',cursor:'pointer',background:arquivo?'#ECFDF5':'#F8FAFC'}}>
-              <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{display:'none'}}
-                onChange={e=>{const fi=e.target.files?.[0];if(fi)setArquivo(fi)}}/>
-              <span style={{fontSize:13,fontWeight:600,color:arquivo?'#059669':'#64748B'}}>
-                {arquivo ? `✓ ${arquivo.name}` : '📎 Anexar PDF ou imagem (opcional)'}
-              </span>
-            </label>
+      {/* ── COMO FUNCIONA ─────────────────────────────── */}
+      <section style={{padding:'5rem 0', background:'#fff'}}>
+        <div style={maxW}>
+          <div style={{textAlign:'center', marginBottom:'3.5rem'}}>
+            <p style={{fontSize:12, fontWeight:700, color:E, letterSpacing:'0.1em', marginBottom:10}}>COMO FUNCIONA</p>
+            <h2 style={{fontSize:'clamp(1.5rem,3vw,2.25rem)', fontWeight:800, letterSpacing:'-0.02em', margin:0}}>
+              Três etapas. Resultado garantido.
+            </h2>
           </div>
 
-          <Campo label="Preço alvo (R$)" id="palvo" value={f.preco_alvo} onChange={set('preco_alvo')} placeholder="Ex: 2,80 (deixe vazio se não souber)"/>
-          <Preview atual={f.preco_atual} alvo={f.preco_alvo}/>
+          <div style={{
+            display:'grid',
+            gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))',
+            gap:'2.5rem',
+          }}>
+            <Step
+              num="1"
+              titulo="Cadastre sua demanda"
+              desc="Informe o produto ou serviço que precisa sourcear e o preço que paga hoje. Não é necessário ter cotação prévia — aceitamos descrição simples."
+            />
+            <Step
+              num="2"
+              titulo="Nosso negociador age"
+              desc="Um especialista busca fornecedores alternativos e negocia em nome da DeuAcordo. Sua identidade é protegida pelo protocolo Duplo-Cego — nenhum fornecedor atual é contatado."
+            />
+            <Step
+              num="3"
+              titulo="Você confirma e economiza"
+              desc="Recebe a proposta com o saving calculado. Se aceitar, o fee de 20% é processado automaticamente. Se não houver economia, não há nenhum custo."
+            />
+          </div>
 
-          <div style={{marginBottom:'1.1rem'}}>
-            <label style={{display:'block',fontSize:12,color:'#0F172A',fontWeight:600,marginBottom:5,textTransform:'uppercase',letterSpacing:'0.05em'}}>Prazo para resultado</label>
-            <select value={f.prazo} onChange={e=>set('prazo')(e.target.value)}
-              style={{width:'100%',padding:'11px 13px',background:'#FFFFFF',border:'1px solid #CBD5E1',borderRadius:8,color:'#0F172A',fontSize:14}}>
-              <option value="7">7 dias — urgente</option>
-              <option value="15">15 dias — padrão</option>
-              <option value="30">30 dias — sem pressa</option>
-            </select>
+          <div style={{textAlign:'center', marginTop:'3.5rem'}}>
+            <BtnPrimario href="/empresa">Quero minha primeira economia →</BtnPrimario>
           </div>
-          {rodape('produto',()=>{setEtapa('confirma')})}
-        </>
-      )}
-
-      {etapa === 'confirma' && card(
-        <>
-          {titulo('Confirme sua solicitação')}
-          {[
-            ['Empresa',f.empresa],['Contato',`${f.nome} · ${f.email}`],['Produto',f.produto],
-            ['Preço atual',f.preco_atual?`R$ ${f.preco_atual}`:'—'],
-            ['Prazo',`${f.prazo} dias`],['NF',arquivo?arquivo.name:'Não']
-          ].map(([k,v])=>(
-            <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'9px 0',borderBottom:'1px solid #E2E8F0',fontSize:13}}>
-              <span style={{color:'#64748B'}}>{k}</span>
-              <span style={{color:'#0F172A',fontWeight:600,textAlign:'right',maxWidth:'60%'}}>{v}</span>
-            </div>
-          ))}
-          <div style={{marginTop:'1rem'}}>
-            <Preview atual={f.preco_atual} alvo={f.preco_alvo}/>
-          </div>
-          <div style={{background:'#F1F5F9',borderRadius:8,padding:'0.9rem',margin:'1rem 0',fontSize:12,color:'#475569',lineHeight:1.6,border:'1px solid #E2E8F0'}}>
-            Você só paga <strong style={{color:'#059669'}}>20% da economia gerada</strong> após confirmar o resultado.
-            Se não houver saving, não há custo.
-          </div>
-          {erro && <p style={{color:'#DC2626',fontSize:13,marginBottom:8,fontWeight:600}}>{erro}</p>}
-          {rodape('baseline', enviar, enviando?'Enviando...':'Enviar solicitação', enviando)}
-        </>
-      )}
-
-      {etapa === 'ok' && (
-        <div style={{maxWidth:480,margin:'3rem auto',padding:'0 1rem',textAlign:'center'}}>
-          <div style={{fontSize:56,marginBottom:'1rem'}}>🎉</div>
-          <h1 style={{fontSize:26,fontWeight:800,color:'#059669',marginBottom:'0.75rem'}}>Solicitação recebida!</h1>
-          <p style={{fontSize:14,color:'#475569',lineHeight:1.65,marginBottom:'2rem'}}>
-            Entraremos em contato em até <strong style={{color:'#0F172A'}}>24 horas úteis</strong> pelo e-mail <strong style={{color:'#0F172A'}}>{f.email}</strong>.
-          </p>
-          <div style={{background:'#ECFDF5',border:'1px solid #A7F3D0',borderRadius:12,padding:'1.25rem',textAlign:'left',marginBottom:'1.5rem'}}>
-            <p style={{fontSize:11,color:'#047857',fontWeight:700,letterSpacing:'0.07em',marginBottom:10}}>O QUE ACONTECE AGORA</p>
-            {['Analisamos seu briefing e as especificações.','Buscamos fornecedores alternativos na sua categoria.','Negociamos por você — sua identidade protegida.','Apresentamos o resultado com o saving calculated.','Você confirma — e só então cobra o fee de 20%.'].map((s,i)=>(
-              <div key={i} style={{display:'flex',gap:10,marginBottom:8,alignItems:'flex-start'}}>
-                <span style={{width:20,height:20,background:'#10B981',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#FFFFFF',flexShrink:0}}>{i+1}</span>
-                <span style={{fontSize:13,color:'#065F46',lineHeight:1.5,fontWeight:500}}>{s}</span>
-              </div>
-            ))}
-          </div>
-          <button onClick={()=>{setF(vazio);setArquivo(null);setEtapa('empresa')}}
-            style={{padding:'12px 28px',background:'#FFFFFF',border:'1px solid #CBD5E1',borderRadius:8,color:'#0F172A',fontSize:13,fontWeight:600,cursor:'pointer'}}>
-            Enviar outra solicitação
-          </button>
         </div>
-      )}
+      </section>
 
-      <footer style={{borderTop:'1px solid #E2E8F0',background:'#FFFFFF',padding:'1.25rem',textAlign:'center',marginTop:'2rem'}}>
-        <p style={{fontSize:11,color:'#64748B'}}>DeuAcordo.com · Negociação com resultado garantido · Gratuito para o comprador</p>
+      {/* ── PERFIL CARDS ──────────────────────────────── */}
+      <section style={{padding:'5rem 0'}}>
+        <div style={maxW}>
+          <div style={{textAlign:'center', marginBottom:'3rem'}}>
+            <p style={{fontSize:12, fontWeight:700, color:E, letterSpacing:'0.1em', marginBottom:10}}>PARA QUEM É</p>
+            <h2 style={{fontSize:'clamp(1.5rem,3vw,2.25rem)', fontWeight:800, letterSpacing:'-0.02em', margin:0}}>
+              Escolha o seu perfil
+            </h2>
+          </div>
+
+          <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))', gap:'1.5rem'}}>
+
+            {/* Card Empresa */}
+            <Link href="/empresa" style={{textDecoration:'none'}}>
+              <div style={{
+                background:'#fff', border:`1.5px solid ${BORDER}`,
+                borderRadius:16, padding:'2rem',
+                transition:'border-color .15s, box-shadow .15s',
+                cursor:'pointer', height:'100%',
+              }}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor=E; e.currentTarget.style.boxShadow=`0 0 0 3px ${E}18`}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor=BORDER; e.currentTarget.style.boxShadow='none'}}>
+                <div style={{
+                  width:48, height:48, background:'#ECFDF5', borderRadius:12,
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  fontSize:24, marginBottom:'1.25rem',
+                }}>🏢</div>
+                <p style={{fontSize:11, fontWeight:700, color:E, letterSpacing:'0.08em', marginBottom:8}}>PARA EMPRESAS</p>
+                <h3 style={{fontSize:20, fontWeight:800, color:NAVY, margin:'0 0 0.75rem', letterSpacing:'-0.02em'}}>
+                  Empresa buscando saving
+                </h3>
+                <p style={{fontSize:14, color:MUTED, lineHeight:1.65, margin:'0 0 1.5rem'}}>
+                  Você tem uma compra recorrente e quer pagar menos. Cadastre a demanda, nosso negociador trabalha por você, e você só paga se economizar.
+                </p>
+                <ul style={{listStyle:'none', padding:0, margin:'0 0 1.75rem', display:'flex', flexDirection:'column', gap:8}}>
+                  {['Gratuito para cadastrar','Fee de 20% só sobre saving real','Resultado em até 15 dias','Identidade protegida — fornecedor atual não é contatado'].map(item => (
+                    <li key={item} style={{display:'flex', alignItems:'flex-start', gap:8, fontSize:13, color:NAVY}}>
+                      <span style={{color:E, fontWeight:700, flexShrink:0}}>✓</span> {item}
+                    </li>
+                  ))}
+                </ul>
+                <div style={{
+                  display:'block', background:E, color:'#fff',
+                  padding:'13px 20px', borderRadius:8, fontSize:14,
+                  fontWeight:700, textAlign:'center',
+                }}>
+                  Economize já →
+                </div>
+              </div>
+            </Link>
+
+            {/* Card Consultor */}
+            <Link href="/consultor" style={{textDecoration:'none'}}>
+              <div style={{
+                background:'#fff', border:`1.5px solid ${BORDER}`,
+                borderRadius:16, padding:'2rem',
+                transition:'border-color .15s, box-shadow .15s',
+                cursor:'pointer', height:'100%',
+              }}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor='#F59E0B'; e.currentTarget.style.boxShadow='0 0 0 3px #F59E0B18'}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor=BORDER; e.currentTarget.style.boxShadow='none'}}>
+                <div style={{
+                  width:48, height:48, background:'#FFFBEB', borderRadius:12,
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  fontSize:24, marginBottom:'1.25rem',
+                }}>🎯</div>
+                <p style={{fontSize:11, fontWeight:700, color:'#B45309', letterSpacing:'0.08em', marginBottom:8}}>PARA CONSULTORES</p>
+                <h3 style={{fontSize:20, fontWeight:800, color:NAVY, margin:'0 0 0.75rem', letterSpacing:'-0.02em'}}>
+                  Consultor de saving
+                </h3>
+                <p style={{fontSize:14, color:MUTED, lineHeight:1.65, margin:'0 0 1.5rem'}}>
+                  Você tem experiência em compras, negociação ou KAM. Receba mesas prontas, negocie no seu tempo e ganhe 70% do fee gerado — sem chefe, sem CLT.
+                </p>
+                <ul style={{listStyle:'none', padding:0, margin:'0 0 1.75rem', display:'flex', flexDirection:'column', gap:8}}>
+                  {['70% do saving fee diretamente para você','Escolha as mesas que aceitar','Trabalhe de qualquer lugar','Saque disponível após cada mesa concluída'].map(item => (
+                    <li key={item} style={{display:'flex', alignItems:'flex-start', gap:8, fontSize:13, color:NAVY}}>
+                      <span style={{color:'#F59E0B', fontWeight:700, flexShrink:0}}>✓</span> {item}
+                    </li>
+                  ))}
+                </ul>
+                <div style={{
+                  display:'block', background:'#F59E0B', color:'#0F172A',
+                  padding:'13px 20px', borderRadius:8, fontSize:14,
+                  fontWeight:700, textAlign:'center',
+                }}>
+                  Quero ser Closer →
+                </div>
+              </div>
+            </Link>
+
+          </div>
+        </div>
+      </section>
+
+      {/* ── GARANTIA / OBJEÇÃO KILLER ─────────────────── */}
+      <section style={{padding:'5rem 0', background:'#fff'}}>
+        <div style={{...maxW, maxWidth:760}}>
+          <div style={{
+            border:`1.5px solid #A7F3D0`, borderRadius:16,
+            padding:'2.5rem', background:'#ECFDF5', textAlign:'center',
+          }}>
+            <p style={{fontSize:32, fontWeight:800, color:E, margin:'0 0 0.75rem', letterSpacing:'-0.02em'}}>
+              Sem saving = sem custo.
+            </p>
+            <p style={{fontSize:16, color:'#065F46', lineHeight:1.7, margin:'0 0 2rem'}}>
+              O fee de 20% é cobrado exclusivamente sobre a economia real e auditável gerada. Se o negociador não encontrar uma alternativa mais barata com as mesmas especificações, você não paga absolutamente nada. Sem mensalidade, sem taxa de cadastro, sem contrato de fidelidade.
+            </p>
+            <BtnPrimario href="/empresa">Abrir minha primeira demanda →</BtnPrimario>
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA FINAL ─────────────────────────────────── */}
+      <section style={{padding:'6rem 0', textAlign:'center'}}>
+        <div style={maxW}>
+          <h2 style={{fontSize:'clamp(1.5rem,3.5vw,2.5rem)', fontWeight:800, letterSpacing:'-0.02em', margin:'0 0 1rem'}}>
+            Pronto para descobrir quanto sua empresa está deixando na mesa?
+          </h2>
+          <p style={{fontSize:16, color:MUTED, margin:'0 auto 2.5rem', maxWidth:480, lineHeight:1.65}}>
+            Cadastre em menos de 3 minutos. Sem cartão de crédito, sem compromisso.
+          </p>
+          <BtnPrimario href="/empresa">Economize já — é gratuito →</BtnPrimario>
+        </div>
+      </section>
+
+      {/* ── FOOTER ────────────────────────────────────── */}
+      <footer style={{borderTop:`1px solid ${BORDER}`, padding:'2rem 1.5rem', textAlign:'center'}}>
+        <div style={maxW}>
+          <p style={{fontWeight:800, fontSize:15, color:NAVY, margin:'0 0 0.5rem'}}>
+            DeuAcordo<span style={{color:E}}>.com</span>
+          </p>
+          <p style={{fontSize:13, color:MUTED, margin:'0 0 1rem'}}>
+            Procurement-as-a-Service · Negociação estruturada com resultado garantido
+          </p>
+          <div style={{display:'flex', gap:'1.5rem', justifyContent:'center', fontSize:13}}>
+            <Link href="/empresa" style={{color:MUTED, textDecoration:'none'}}>Para empresas</Link>
+            <Link href="/consultor" style={{color:MUTED, textDecoration:'none'}}>Para consultores</Link>
+          </div>
+          <p style={{fontSize:11, color:'#CBD5E1', marginTop:'1.5rem', margin:'1.5rem 0 0'}}>
+            © {new Date().getFullYear()} DeuAcordo.com · Todos os direitos reservados
+          </p>
+        </div>
       </footer>
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+        * { box-sizing: border-box; }
+      `}</style>
     </div>
   )
 }
