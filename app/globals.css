@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+:root {
+  --background: #FFFFFF;
+  --foreground: #0F172A;
+}
+
+body {
+  background: #F8FAFC;
+  color: #0F172A;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+}
+
+input, select, textarea {
+  background-color: #FFFFFF !important;
+  color: #0F172A !important;
+  border-color: #CBD5E1 !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #64748B !important;
+}
