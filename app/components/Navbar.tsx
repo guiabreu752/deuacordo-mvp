@@ -218,20 +218,7 @@ export default function Navbar() {
 
         {/* Botões de Ação */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <span
-            style={{
-              background: '#ECFDF5',
-              color: '#065F46',
-              fontSize: 11,
-              fontWeight: 700,
-              padding: '4px 10px',
-              borderRadius: 20,
-              border: '1px solid #A7F3D0',
-            }}
-          >
-            SUCCESS FEE 20%
-          </span>
-
+         
           <Link
             href="/login"
             style={{
