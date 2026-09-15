@@ -1,4 +1,5 @@
 'use client'
+import Navbar from '@/components/Navbar'
 import Link from 'next/link'
 
 const E = '#10B981'   // emerald
@@ -65,41 +66,7 @@ export default function LandingPage() {
   return (
     <div style={{background:SLATE, color:NAVY, fontFamily:'Inter,system-ui,sans-serif', lineHeight:1.6}}>
 
-      {/* ── HEADER ────────────────────────────────────── */}
-      <header style={{
-        position:'sticky', top:0, zIndex:50,
-        background:'rgba(248,250,252,0.92)',
-        backdropFilter:'blur(12px)',
-        borderBottom:`1px solid ${BORDER}`,
-      }}>
-        <div style={{...maxW, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'1rem 1.5rem'}}>
-        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}>
-  <img 
-    src="/logo.png" 
-    alt="DeuAcordo.com" 
-    style={{ height: 52, width: 'auto', objectFit: 'contain' }} 
-  />
-  <span style={{ fontWeight: 800, fontSize: 18, color: NAVY, letterSpacing: '-0.02em' }}>
-    DeuAcordo<span style={{ color: E }}>.com</span>
-  </span>
-</Link>
-          <nav style={{display:'flex', alignItems:'center', gap:'0.75rem'}}>
-            <span style={{
-              background:'#ECFDF5', color:'#065F46', fontSize:11, fontWeight:700,
-              padding:'3px 10px', borderRadius:20, letterSpacing:'0.05em',
-              border:'1px solid #A7F3D0',
-            }}>
-              SUCCESS FEE
-            </span>
-            <Link href="/empresa" style={{
-              background:E, color:'#fff', padding:'9px 20px', borderRadius:7,
-              fontSize:13, fontWeight:700, textDecoration:'none',
-            }}>
-              Economize já →
-            </Link>
-          </nav>
-        </div>
-      </header>
+<Navbar />
 
       {/* ── HERO ──────────────────────────────────────── */}
       <section style={{padding:'6rem 0 4.5rem', textAlign:'center'}}>
