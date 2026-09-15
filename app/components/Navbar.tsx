@@ -216,8 +216,8 @@ export default function Navbar() {
           ))}
         </nav>
 
-        {/* Botão de Ação Direta */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        {/* Botões de Ação */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <span
             style={{
               background: '#ECFDF5',
@@ -231,6 +231,20 @@ export default function Navbar() {
           >
             SUCCESS FEE 20%
           </span>
+
+          <Link
+            href="/login"
+            style={{
+              color: NAVY,
+              padding: '8px 14px',
+              fontSize: 13,
+              fontWeight: 600,
+              textDecoration: 'none',
+            }}
+          >
+            Entrar
+          </Link>
+
           <Link
             href="/empresa"
             style={{
