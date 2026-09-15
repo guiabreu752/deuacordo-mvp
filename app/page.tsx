@@ -77,7 +77,7 @@ export default function LandingPage() {
   <img 
     src="/logo.png" 
     alt="DeuAcordo.com" 
-    style={{ height: 34, width: 'auto', objectFit: 'contain' }} 
+    style={{ height: 52, width: 'auto', objectFit: 'contain' }} 
   />
   <span style={{ fontWeight: 800, fontSize: 18, color: NAVY, letterSpacing: '-0.02em' }}>
     DeuAcordo<span style={{ color: E }}>.com</span>
