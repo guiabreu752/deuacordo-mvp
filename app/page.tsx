@@ -73,9 +73,16 @@ export default function LandingPage() {
         borderBottom:`1px solid ${BORDER}`,
       }}>
         <div style={{...maxW, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'1rem 1.5rem'}}>
-          <span style={{fontWeight:800, fontSize:18, color:NAVY, letterSpacing:'-0.02em'}}>
-            DeuAcordo<span style={{color:E}}>.com</span>
-          </span>
+        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}>
+  <img 
+    src="/logo.png" 
+    alt="DeuAcordo.com" 
+    style={{ height: 34, width: 'auto', objectFit: 'contain' }} 
+  />
+  <span style={{ fontWeight: 800, fontSize: 18, color: NAVY, letterSpacing: '-0.02em' }}>
+    DeuAcordo<span style={{ color: E }}>.com</span>
+  </span>
+</Link>
           <nav style={{display:'flex', alignItems:'center', gap:'0.75rem'}}>
             <span style={{
               background:'#ECFDF5', color:'#065F46', fontSize:11, fontWeight:700,
