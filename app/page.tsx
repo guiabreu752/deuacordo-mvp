@@ -1,5 +1,5 @@
 'use client'
-import Navbar from '@/components/Navbar'
+import Navbar from './components/Navbar'
 import Link from 'next/link'
 
 const E = '#10B981'   // emerald
