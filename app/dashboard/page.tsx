@@ -1,9 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
+import type { User } from '@supabase/supabase-js'
 
-// ── Paleta ────────────────────────────────────────────────
+// ── Paleta ────────────────────────────────────────────────────
 const NAVY   = '#0F172A'
 const E      = '#10B981'
 const MUTED  = '#64748B'
@@ -13,7 +16,7 @@ const WHITE  = '#FFFFFF'
 const AMBER  = '#F59E0B'
 const RED    = '#EF4444'
 
-// ── Tipos ─────────────────────────────────────────────────
+// ── Tipos ─────────────────────────────────────────────────────
 type Role = 'empresa' | 'closer'
 
 type StatusMesa =
@@ -22,125 +25,64 @@ type StatusMesa =
   | 'Concluída'
   | 'Cancelada'
 
-interface EventoTimeline {
-  data: string
-  descricao: string
-  tipo: 'info' | 'success' | 'warning'
-}
-
+// Espelha exatamente as colunas da tabela Supabase
 interface Mesa {
   id: string
+  criado_em: string
+  user_id: string
   produto: string
   baseline: number
   saving: number
-  prazoTotal: number
-  diasRestantes: number
+  preco_proposto: number | null
+  prazo_total: number
+  dias_restantes: number
   status: StatusMesa
-  fornecedorAtual: string
-  fornecedorProposto: string
-  precoProposto: number
-  timeline: EventoTimeline[]
+  fornecedor_atual: string
+  fornecedor_proposto: string
+  criado_por_role: Role
 }
 
 interface FormNovaMesa {
   produto: string
-  valorAtual: string
-  precoAlvo: string
+  baseline: string
+  preco_alvo: string
   prazo: string
 }
 
-// ── Dados de exemplo ──────────────────────────────────────
-const mesasIniciais: Mesa[] = [
-  {
-    id: 'MESA-8042',
-    produto: '5.000 Caixas de Papelão Ondulado 30x20x15cm',
-    baseline: 45000,
-    saving: 8200,
-    prazoTotal: 15,
-    diasRestantes: 4,
-    status: 'Em Negociação',
-    fornecedorAtual: 'Embalagens Norte Ltda',
-    fornecedorProposto: 'Fornecedor alternativo em avaliação',
-    precoProposto: 36800,
-    timeline: [
-      { data: '10/09/2026', descricao: 'Mesa aberta pelo cliente.', tipo: 'info' },
-      { data: '11/09/2026', descricao: 'Closer designado e briefing recebido.', tipo: 'info' },
-      { data: '12/09/2026', descricao: '3 fornecedores alternativos identificados.', tipo: 'info' },
-      { data: '14/09/2026', descricao: 'Melhor proposta recebida: R$ 36.800 (saving de 18,2%).', tipo: 'success' },
-    ],
-  },
-  {
-    id: 'MESA-7891',
-    produto: 'Licenças de Software ERP — Módulo Fiscal (12 meses)',
-    baseline: 84000,
-    saving: 14200,
-    prazoTotal: 30,
-    diasRestantes: 12,
-    status: 'Aguardando Aprovação',
-    fornecedorAtual: 'SAP Brasil',
-    fornecedorProposto: 'Totvs Protheus — Proposta Negociada',
-    precoProposto: 69800,
-    timeline: [
-      { data: '01/09/2026', descricao: 'Mesa aberta pelo cliente.', tipo: 'info' },
-      { data: '03/09/2026', descricao: 'Closer iniciou mapeamento de alternativas.', tipo: 'info' },
-      { data: '08/09/2026', descricao: 'Proposta enviada ao cliente para aceite.', tipo: 'warning' },
-    ],
-  },
-  {
-    id: 'MESA-7654',
-    produto: 'EPIs Corporativos — Kit Completo 200 colaboradores',
-    baseline: 38000,
-    saving: 9400,
-    prazoTotal: 15,
-    diasRestantes: 0,
-    status: 'Concluída',
-    fornecedorAtual: 'Proteção Total Ltda',
-    fornecedorProposto: 'SafeWork Equipamentos',
-    precoProposto: 28600,
-    timeline: [
-      { data: '25/08/2026', descricao: 'Mesa aberta.', tipo: 'info' },
-      { data: '27/08/2026', descricao: 'Closer encontrou 4 alternativas certificadas.', tipo: 'info' },
-      { data: '30/08/2026', descricao: 'Cliente aprovou saving de R$ 9.400 (24,7%).', tipo: 'success' },
-      { data: '01/09/2026', descricao: 'Escrow liberado. Comissão processada.', tipo: 'success' },
-    ],
-  },
-]
-
-// ── Helpers ───────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────
 const brl = (n: number) =>
   n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-const calcFee   = (saving: number) => saving * 0.20
+const calcFee      = (saving: number) => saving * 0.20
 const calcComissao = (saving: number) => saving * 0.20 * 0.70
 
-function statusConfig(s: StatusMesa) {
-  const cfg: Record<StatusMesa, { bg: string; color: string; dot: string }> = {
-    'Em Negociação':       { bg: '#DBEAFE', color: '#1D4ED8', dot: '#3B82F6' },
-    'Aguardando Aprovação':{ bg: '#FEF9C3', color: '#854D0E', dot: AMBER     },
-    'Concluída':           { bg: '#DCFCE7', color: '#166534', dot: E          },
-    'Cancelada':           { bg: '#FEE2E2', color: '#991B1B', dot: RED        },
+function statusCfg(s: StatusMesa) {
+  const m: Record<StatusMesa, { bg: string; color: string }> = {
+    'Em Negociação':        { bg: '#DBEAFE', color: '#1D4ED8' },
+    'Aguardando Aprovação': { bg: '#FEF9C3', color: '#854D0E' },
+    'Concluída':            { bg: '#DCFCE7', color: '#166534' },
+    'Cancelada':            { bg: '#FEE2E2', color: '#991B1B' },
   }
-  return cfg[s]
+  return m[s]
 }
 
-function urgenciaConfig(dias: number) {
-  if (dias === 0) return { bg: '#DCFCE7', color: '#166534', label: 'Concluída' }
-  if (dias <= 3)  return { bg: '#FEE2E2', color: '#991B1B', label: `${dias}d restantes` }
-  if (dias <= 7)  return { bg: '#FEF9C3', color: '#854D0E', label: `${dias}d restantes` }
-  return             { bg: '#F1F5F9',  color: MUTED,      label: `${dias}d restantes` }
+function urgenciaCfg(dias: number, status: StatusMesa) {
+  if (status === 'Concluída')  return { bg: '#DCFCE7', color: '#166534', label: 'Concluída' }
+  if (status === 'Cancelada')  return { bg: '#FEE2E2', color: '#991B1B', label: 'Cancelada' }
+  if (dias <= 0)               return { bg: '#FEE2E2', color: '#991B1B', label: 'Vencida' }
+  if (dias <= 3)               return { bg: '#FEE2E2', color: '#991B1B', label: `${dias}d rest.` }
+  if (dias <= 7)               return { bg: '#FEF9C3', color: '#854D0E', label: `${dias}d rest.` }
+  return                              { bg: SLATE,     color: MUTED,     label: `${dias}d rest.` }
 }
 
-// ── Sub-componentes ───────────────────────────────────────
-
+// ── Sub-componentes ───────────────────────────────────────────
 function Badge({ text, bg, color }: { text: string; bg: string; color: string }) {
   return (
     <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5,
-      background: bg, color, fontSize: 11, fontWeight: 700,
-      padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap',
-    }}>
-      {text}
-    </span>
+      display: 'inline-block', background: bg, color,
+      fontSize: 11, fontWeight: 700, padding: '3px 9px',
+      borderRadius: 20, whiteSpace: 'nowrap',
+    }}>{text}</span>
   )
 }
 
@@ -149,9 +91,10 @@ function MetricCard({ label, value, sub, accent = false }: {
 }) {
   return (
     <div style={{
-      background: WHITE, border: `1.5px solid ${accent ? E : BORDER}`,
+      background: WHITE,
+      border: `1.5px solid ${accent ? E : BORDER}`,
       borderRadius: 12, padding: '1.25rem 1.5rem',
-      flex: 1, minWidth: 160,
+      flex: 1, minWidth: 150,
     }}>
       <p style={{ fontSize: 11, fontWeight: 700, color: accent ? E : MUTED, letterSpacing: '0.07em', margin: '0 0 6px' }}>
         {label}
@@ -164,49 +107,74 @@ function MetricCard({ label, value, sub, accent = false }: {
   )
 }
 
-// ── Modal de nova mesa ────────────────────────────────────
-function ModalNovaMesa({ onClose, onSalvar }: {
+function Spinner({ fullPage = false }: { fullPage?: boolean }) {
+  const inner = (
+    <div style={{ textAlign: 'center' }}>
+      <div style={{
+        width: 36, height: 36, border: `3px solid ${BORDER}`,
+        borderTopColor: E, borderRadius: '50%',
+        margin: '0 auto 12px', animation: 'spin 0.8s linear infinite',
+      }} />
+      <p style={{ fontSize: 13, color: MUTED }}>Carregando...</p>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
+  )
+  if (!fullPage) return inner
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: SLATE }}>
+      {inner}
+    </div>
+  )
+}
+
+// ── Modal Nova Mesa ───────────────────────────────────────────
+function ModalNovaMesa({
+  onClose, onSalvar, salvando,
+}: {
   onClose: () => void
-  onSalvar: (form: FormNovaMesa) => void
+  onSalvar: (f: FormNovaMesa) => Promise<void>
+  salvando: boolean
 }) {
-  const [form, setForm] = useState<FormNovaMesa>({ produto: '', valorAtual: '', precoAlvo: '', prazo: '15' })
+  const [form, setForm] = useState<FormNovaMesa>({ produto: '', baseline: '', preco_alvo: '', prazo: '15' })
+  const [erroLocal, setErroLocal] = useState('')
   const set = (k: keyof FormNovaMesa) => (v: string) => setForm(p => ({ ...p, [k]: v }))
 
-  const saving = (() => {
-    const a = parseFloat(form.valorAtual.replace(',', '.'))
-    const b = parseFloat(form.precoAlvo.replace(',', '.'))
+  const previewSaving = (() => {
+    const a = parseFloat(form.baseline.replace(',', '.'))
+    const b = parseFloat(form.preco_alvo.replace(',', '.'))
     if (!a || !b || b >= a) return null
     return { valor: a - b, pct: ((a - b) / a * 100).toFixed(1) }
   })()
 
+  async function submit() {
+    if (!form.produto.trim()) { setErroLocal('Informe o produto.'); return }
+    if (!form.baseline)       { setErroLocal('Informe o valor atual.'); return }
+    setErroLocal('')
+    await onSalvar(form)
+  }
+
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
-      background: 'rgba(15,23,42,0.55)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '1rem',
-    }}
-    onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{
-        background: WHITE, borderRadius: 16, width: '100%', maxWidth: 500,
-        padding: '2rem', boxShadow: '0 25px 50px rgba(0,0,0,0.2)',
-      }}>
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 480, padding: '2rem', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, margin: 0 }}>Nova Mesa de Negociação</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: MUTED, lineHeight: 1 }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: MUTED, lineHeight: 1, padding: 0 }}>✕</button>
         </div>
 
         {[
-          { label: 'Produto / Insumo *', id: 'prod', key: 'produto' as const, placeholder: 'Ex: 5.000 caixas de papelão ondulado' },
-          { label: 'Valor atual pago (R$) *', id: 'va', key: 'valorAtual' as const, placeholder: 'Ex: 45000' },
-          { label: 'Preço alvo desejado (R$)', id: 'pa', key: 'precoAlvo' as const, placeholder: 'Ex: 38000' },
-        ].map(({ label, id, key, placeholder }) => (
-          <div key={id} style={{ marginBottom: '1rem' }}>
-            <label htmlFor={id} style={{ display: 'block', fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          { label: 'Produto / Insumo *', key: 'produto' as const,   placeholder: 'Ex: 5.000 caixas de papelão ondulado' },
+          { label: 'Valor atual pago (R$) *', key: 'baseline' as const, placeholder: 'Ex: 45000' },
+          { label: 'Preço alvo desejado (R$)', key: 'preco_alvo' as const, placeholder: 'Ex: 38000 (opcional)' },
+        ].map(({ label, key, placeholder }) => (
+          <div key={key} style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               {label}
             </label>
             <input
-              id={id} value={form[key]} placeholder={placeholder}
+              value={form[key]} placeholder={placeholder}
               onChange={e => set(key)(e.target.value)}
               style={{ width: '100%', padding: '10px 13px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, color: NAVY, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
               onFocus={e => { e.target.style.borderColor = E; e.target.style.boxShadow = `0 0 0 3px ${E}25` }}
@@ -227,24 +195,28 @@ function ModalNovaMesa({ onClose, onSalvar }: {
           </select>
         </div>
 
-        {saving && (
+        {previewSaving && (
           <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10, padding: '0.9rem', marginBottom: '1rem' }}>
             <p style={{ fontSize: 11, fontWeight: 700, color: '#047857', letterSpacing: '0.07em', margin: '0 0 4px' }}>PRÉVIA DO SAVING</p>
-            <p style={{ fontSize: 22, fontWeight: 800, color: E, margin: '0 0 2px' }}>{saving.pct}% de economia estimada</p>
+            <p style={{ fontSize: 22, fontWeight: 800, color: E, margin: '0 0 2px' }}>{previewSaving.pct}% de economia estimada</p>
             <p style={{ fontSize: 12, color: '#065F46', margin: 0 }}>
-              Saving: {brl(saving.valor)} · Fee DeuAcordo: {brl(saving.valor * 0.2)}
+              Saving: {brl(previewSaving.valor)} · Fee DeuAcordo: {brl(previewSaving.valor * 0.2)}
             </p>
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 10, marginTop: '0.5rem' }}>
+        {erroLocal && (
+          <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', marginBottom: '1rem' }}>
+            <p style={{ fontSize: 13, color: '#DC2626', margin: 0, fontWeight: 500 }}>⚠️ {erroLocal}</p>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onClose} style={{ flex: 1, padding: '12px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
             Cancelar
           </button>
-          <button
-            onClick={() => { if (!form.produto || !form.valorAtual) return; onSalvar(form) }}
-            style={{ flex: 2, padding: '12px', background: E, border: 'none', borderRadius: 8, color: WHITE, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-            Abrir Mesa →
+          <button onClick={submit} disabled={salvando} style={{ flex: 2, padding: '12px', background: salvando ? '#A7F3D0' : E, border: 'none', borderRadius: 8, color: WHITE, fontSize: 14, fontWeight: 700, cursor: salvando ? 'wait' : 'pointer' }}>
+            {salvando ? 'Salvando...' : 'Abrir Mesa →'}
           </button>
         </div>
       </div>
@@ -252,174 +224,208 @@ function ModalNovaMesa({ onClose, onSalvar }: {
   )
 }
 
-// ── Modal de detalhes da mesa ─────────────────────────────
-function ModalDetalhes({ mesa, role, onClose }: {
-  mesa: Mesa; role: Role; onClose: () => void
-}) {
-  const [mensagem, setMensagem] = useState('')
-  const [proposta, setProposta] = useState('')
-  const fee = calcFee(mesa.saving)
+// ── Modal Detalhes da Mesa ────────────────────────────────────
+function ModalDetalhes({ mesa, role, onClose }: { mesa: Mesa; role: Role; onClose: () => void }) {
+  const fee      = calcFee(mesa.saving)
   const comissao = calcComissao(mesa.saving)
-  const sc = statusConfig(mesa.status)
+  const sc       = statusCfg(mesa.status)
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
-      background: 'rgba(15,23,42,0.55)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '1rem',
-    }}
-    onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{
-        background: WHITE, borderRadius: 16, width: '100%', maxWidth: 620,
-        maxHeight: '90vh', overflowY: 'auto',
-        boxShadow: '0 25px 50px rgba(0,0,0,0.2)',
-      }}>
-        {/* Cabeçalho do modal */}
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 580, maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
+
+        {/* Header */}
         <div style={{ padding: '1.5rem 2rem', borderBottom: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <p style={{ fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: '0.07em', margin: '0 0 4px' }}>#{mesa.id}</p>
-            <h2 style={{ fontSize: 17, fontWeight: 800, color: NAVY, margin: '0 0 8px', lineHeight: 1.3 }}>{mesa.produto}</h2>
+            <p style={{ fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: '0.07em', margin: '0 0 4px' }}>
+              #{mesa.id.slice(0, 8).toUpperCase()}
+            </p>
+            <h2 style={{ fontSize: 16, fontWeight: 800, color: NAVY, margin: '0 0 8px', lineHeight: 1.35 }}>{mesa.produto}</h2>
             <Badge text={mesa.status} bg={sc.bg} color={sc.color} />
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: MUTED, lineHeight: 1, flexShrink: 0 }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: MUTED, lineHeight: 1, padding: 0, flexShrink: 0 }}>✕</button>
         </div>
 
         <div style={{ padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
           {/* Cálculo financeiro */}
           <div style={{ background: SLATE, borderRadius: 10, padding: '1.25rem', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-            <div>
-              <p style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: '0.06em', margin: '0 0 4px' }}>BASELINE</p>
-              <p style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: 0 }}>{brl(mesa.baseline)}</p>
-            </div>
-            <div>
-              <p style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: '0.06em', margin: '0 0 4px' }}>SAVING GERADO</p>
-              <p style={{ fontSize: 18, fontWeight: 800, color: E, margin: 0 }}>{brl(mesa.saving)}</p>
-              <p style={{ fontSize: 11, color: E, margin: '2px 0 0' }}>{(mesa.saving / mesa.baseline * 100).toFixed(1)}% de economia</p>
-            </div>
-            <div>
-              <p style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: '0.06em', margin: '0 0 4px' }}>
-                {role === 'empresa' ? 'FEE DA PLATAFORMA' : 'SUA COMISSÃO (70%)'}
-              </p>
-              <p style={{ fontSize: 18, fontWeight: 800, color: role === 'empresa' ? NAVY : AMBER, margin: 0 }}>
-                {role === 'empresa' ? brl(fee) : brl(comissao)}
-              </p>
-              <p style={{ fontSize: 11, color: MUTED, margin: '2px 0 0' }}>
-                {role === 'empresa' ? '20% do saving' : '70% do fee de 20%'}
-              </p>
-            </div>
+            {[
+              { label: 'BASELINE',                                     value: brl(mesa.baseline),  color: NAVY },
+              { label: 'SAVING GERADO',                                value: brl(mesa.saving),    color: E    },
+              {
+                label: role === 'empresa' ? 'FEE (20%)' : 'SUA COMISSÃO',
+                value: role === 'empresa' ? brl(fee) : brl(comissao),
+                color: role === 'empresa' ? NAVY : AMBER,
+              },
+            ].map(({ label, value, color }) => (
+              <div key={label}>
+                <p style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: '0.06em', margin: '0 0 4px' }}>{label}</p>
+                <p style={{ fontSize: 18, fontWeight: 800, color, margin: 0 }}>{value}</p>
+              </div>
+            ))}
           </div>
 
-          {/* Fornecedor baseline vs proposto */}
+          {/* Fornecedores */}
           <div>
-            <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, letterSpacing: '0.05em', margin: '0 0 10px' }}>COMPARATIVO DE FORNECEDORES</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, letterSpacing: '0.05em', margin: '0 0 10px' }}>COMPARATIVO</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '0.9rem' }}>
                 <p style={{ fontSize: 10, fontWeight: 700, color: RED, letterSpacing: '0.06em', margin: '0 0 4px' }}>FORNECEDOR ATUAL</p>
-                <p style={{ fontSize: 13, fontWeight: 700, color: NAVY, margin: '0 0 2px' }}>{mesa.fornecedorAtual}</p>
+                <p style={{ fontSize: 13, fontWeight: 700, color: NAVY, margin: '0 0 2px' }}>{mesa.fornecedor_atual}</p>
                 <p style={{ fontSize: 14, fontWeight: 800, color: RED, margin: 0 }}>{brl(mesa.baseline)}</p>
               </div>
               <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 8, padding: '0.9rem' }}>
                 <p style={{ fontSize: 10, fontWeight: 700, color: '#065F46', letterSpacing: '0.06em', margin: '0 0 4px' }}>PROPOSTA NEGOCIADA</p>
-                <p style={{ fontSize: 13, fontWeight: 700, color: NAVY, margin: '0 0 2px' }}>{mesa.fornecedorProposto}</p>
-                <p style={{ fontSize: 14, fontWeight: 800, color: E, margin: 0 }}>{brl(mesa.precoProposto)}</p>
+                <p style={{ fontSize: 13, fontWeight: 700, color: NAVY, margin: '0 0 2px' }}>{mesa.fornecedor_proposto}</p>
+                <p style={{ fontSize: 14, fontWeight: 800, color: E, margin: 0 }}>
+                  {mesa.preco_proposto ? brl(mesa.preco_proposto) : '—'}
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Timeline */}
-          <div>
-            <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, letterSpacing: '0.05em', margin: '0 0 12px' }}>HISTÓRICO DA NEGOCIAÇÃO</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-              {mesa.timeline.map((ev, i) => {
-                const dotColor = ev.tipo === 'success' ? E : ev.tipo === 'warning' ? AMBER : '#94A3B8'
-                return (
-                  <div key={i} style={{ display: 'flex', gap: 14, position: 'relative' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: dotColor, marginTop: 4, flexShrink: 0 }} />
-                      {i < mesa.timeline.length - 1 && (
-                        <div style={{ width: 1, flex: 1, background: BORDER, marginTop: 2, marginBottom: 2, minHeight: 20 }} />
-                      )}
-                    </div>
-                    <div style={{ paddingBottom: i < mesa.timeline.length - 1 ? '0.75rem' : 0 }}>
-                      <p style={{ fontSize: 10, color: MUTED, margin: '0 0 2px', fontWeight: 600 }}>{ev.data}</p>
-                      <p style={{ fontSize: 13, color: NAVY, margin: 0, lineHeight: 1.45 }}>{ev.descricao}</p>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+          {/* Dados adicionais */}
+          <div style={{ background: SLATE, borderRadius: 10, padding: '1rem' }}>
+            {[
+              { label: 'Criado em', value: new Date(mesa.criado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }) },
+              { label: 'Prazo total',      value: `${mesa.prazo_total} dias` },
+              { label: 'Dias restantes',   value: mesa.dias_restantes > 0 ? `${mesa.dias_restantes} dias` : 'Vencida' },
+            ].map(({ label, value }) => (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${BORDER}`, fontSize: 13 }}>
+                <span style={{ color: MUTED }}>{label}</span>
+                <span style={{ color: NAVY, fontWeight: 600 }}>{value}</span>
+              </div>
+            ))}
           </div>
-
-          {/* Campo de interação */}
-          {mesa.status !== 'Concluída' && mesa.status !== 'Cancelada' && (
-            <div>
-              <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, letterSpacing: '0.05em', margin: '0 0 10px' }}>
-                {role === 'closer' ? 'ATUALIZAR PROPOSTA DE FORNECEDOR' : 'ENVIAR MENSAGEM PARA O CLOSER'}
-              </p>
-
-              {role === 'closer' && (
-                <input
-                  value={proposta}
-                  onChange={e => setProposta(e.target.value)}
-                  placeholder="Valor da nova proposta (R$)"
-                  style={{ width: '100%', padding: '10px 13px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, color: NAVY, fontSize: 14, marginBottom: 8, boxSizing: 'border-box', outline: 'none' }}
-                />
-              )}
-              <textarea
-                value={mensagem}
-                onChange={e => setMensagem(e.target.value)}
-                placeholder={role === 'closer' ? 'Descreva o fornecedor e condições negociadas...' : 'Tire dúvidas ou informe requisitos adicionais...'}
-                rows={3}
-                style={{ width: '100%', padding: '10px 13px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, color: NAVY, fontSize: 14, resize: 'vertical', boxSizing: 'border-box', outline: 'none', fontFamily: 'inherit' }}
-              />
-              <button style={{
-                marginTop: 8, padding: '10px 20px',
-                background: role === 'closer' ? AMBER : E,
-                border: 'none', borderRadius: 8,
-                color: role === 'closer' ? NAVY : WHITE,
-                fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              }}>
-                {role === 'closer' ? 'Enviar Proposta' : 'Enviar Mensagem'}
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </div>
   )
 }
 
-// ── Dashboard principal ───────────────────────────────────
+// ── Dashboard Principal ───────────────────────────────────────
 export default function DashboardPage() {
+  const router = useRouter()
+  const [user, setUser]               = useState<User | null>(null)
+  const [mesas, setMesas]             = useState<Mesa[]>([])
+  const [carregando, setCarregando]   = useState(true)
+  const [erroFetch, setErroFetch]     = useState('')
   const [role, setRole]               = useState<Role>('empresa')
-  const [mesas, setMesas]             = useState<Mesa[]>(mesasIniciais)
   const [modalNova, setModalNova]     = useState(false)
+  const [salvando, setSalvando]       = useState(false)
   const [mesaDetalhe, setMesaDetalhe] = useState<Mesa | null>(null)
+  const [saindo, setSaindo]           = useState(false)
 
-  const totalSaving    = mesas.reduce((s, m) => s + m.saving, 0)
-  const totalComissoes = mesas.reduce((s, m) => s + calcComissao(m.saving), 0)
+  // ── Busca mesas do usuário logado ──────────────────────────
+  const buscarMesas = useCallback(async (uid: string) => {
+    setErroFetch('')
+    try {
+      const { data, error } = await supabase
+        .from('mesas')
+        .select('*')
+        .eq('user_id', uid)
+        .order('criado_em', { ascending: false })
+
+      if (error) throw error
+      setMesas((data as Mesa[]) ?? [])
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao carregar mesas.'
+      setErroFetch(msg)
+    }
+  }, [])
+
+  // ── Proteção de rota + carga inicial ──────────────────────
+  useEffect(() => {
+    let mounted = true
+
+    async function init() {
+      const { data: { user: u } } = await supabase.auth.getUser()
+      if (!mounted) return
+
+      if (!u) {
+        router.replace('/login')
+        return
+      }
+      setUser(u)
+      await buscarMesas(u.id)
+      if (mounted) setCarregando(false)
+    }
+
+    init()
+
+    // Listener para mudanças de sessão (logout em outra aba, expiração, etc.)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') router.replace('/login')
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [router, buscarMesas])
+
+  // ── Sign Out ───────────────────────────────────────────────
+  async function sair() {
+    setSaindo(true)
+    await supabase.auth.signOut()
+    router.replace('/login')
+  }
+
+  // ── Criar nova mesa no Supabase ───────────────────────────
+  async function criarMesa(form: FormNovaMesa) {
+    if (!user) return
+    setSalvando(true)
+    try {
+      const baseline = parseFloat(form.baseline.replace(',', '.')) || 0
+      const prazo    = parseInt(form.prazo) || 15
+
+      const { error } = await supabase.from('mesas').insert({
+        user_id:            user.id,
+        produto:            form.produto.trim(),
+        baseline,
+        saving:             0,
+        preco_proposto:     null,
+        prazo_total:        prazo,
+        dias_restantes:     prazo,
+        status:             'Em Negociação',
+        fornecedor_atual:   'A definir',
+        fornecedor_proposto:'Aguardando Closer',
+        criado_por_role:    role,
+      })
+
+      if (error) throw error
+
+      // Recarrega a lista do banco (fonte única de verdade)
+      await buscarMesas(user.id)
+      setModalNova(false)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao criar mesa.'
+      setErroFetch(msg)
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  // ── Métricas calculadas ────────────────────────────────────
+  const totalSaving    = mesas.reduce((s, m) => s + (m.saving ?? 0), 0)
+  const totalBaseline  = mesas.reduce((s, m) => s + (m.baseline ?? 0), 0)
+  const totalComissoes = mesas.reduce((s, m) => s + calcComissao(m.saving ?? 0), 0)
   const mesasAtivas    = mesas.filter(m => m.status === 'Em Negociação').length
   const mesasConc      = mesas.filter(m => m.status === 'Concluída').length
+  const taxaMedia      = totalBaseline > 0 ? (totalSaving / totalBaseline * 100) : 0
 
-  function adicionarMesa(form: FormNovaMesa) {
-    const novo: Mesa = {
-      id: `MESA-${Math.floor(1000 + Math.random() * 9000)}`,
-      produto: form.produto,
-      baseline: parseFloat(form.valorAtual.replace(',', '.')),
-      saving: 0,
-      prazoTotal: parseInt(form.prazo),
-      diasRestantes: parseInt(form.prazo),
-      status: 'Em Negociação',
-      fornecedorAtual: 'A definir',
-      fornecedorProposto: 'Aguardando closer',
-      precoProposto: 0,
-      timeline: [{ data: new Date().toLocaleDateString('pt-BR'), descricao: 'Mesa aberta.', tipo: 'info' }],
-    }
-    setMesas(p => [novo, ...p])
-    setModalNova(false)
-  }
+  // Nome de exibição do usuário
+  const nomeUsuario =
+    (user?.user_metadata?.nome_completo as string | undefined)?.split(' ')[0]
+    ?? user?.email?.split('@')[0]
+    ?? 'Usuário'
+
+  // ── Tela de carregamento ───────────────────────────────────
+  if (carregando) return <Spinner fullPage />
 
   return (
     <div style={{ minHeight: '100vh', background: SLATE, fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -427,40 +433,47 @@ export default function DashboardPage() {
       {/* ── Header ── */}
       <header style={{ background: WHITE, borderBottom: `1px solid ${BORDER}`, padding: '0.9rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-          <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 36, width: 'auto' }} />
-          <span style={{ fontWeight: 800, fontSize: 18, color: NAVY }}>
+          <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 34, width: 'auto', objectFit: 'contain' }} />
+          <span style={{ fontWeight: 800, fontSize: 17, color: NAVY, letterSpacing: '-0.02em' }}>
             DeuAcordo<span style={{ color: E }}>.com</span>
           </span>
         </Link>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <span style={{ fontSize: 13, color: MUTED }}>usuario@empresa.com.br</span>
-          <Link href="/login" style={{ fontSize: 13, fontWeight: 600, color: RED, textDecoration: 'none' }}>
-            Sair →
-          </Link>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+          <div style={{ textAlign: 'right' }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, margin: 0 }}>{nomeUsuario}</p>
+            <p style={{ fontSize: 11, color: MUTED, margin: 0 }}>{user?.email}</p>
+          </div>
+          <button
+            onClick={sair}
+            disabled={saindo}
+            style={{ fontSize: 13, fontWeight: 700, color: RED, background: '#FEF2F2', border: '1px solid #FECACA', padding: '7px 14px', borderRadius: 7, cursor: saindo ? 'wait' : 'pointer' }}
+          >
+            {saindo ? 'Saindo...' : 'Sair →'}
+          </button>
         </div>
       </header>
 
       <main style={{ maxWidth: 1100, margin: '0 auto', padding: '2rem 1.5rem' }}>
 
-        {/* ── Role Switcher ── */}
+        {/* ── Título + Role Switcher ── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
-            <h1 style={{ fontSize: 24, fontWeight: 800, color: NAVY, margin: '0 0 4px' }}>
+            <h1 style={{ fontSize: 23, fontWeight: 800, color: NAVY, margin: '0 0 3px' }}>
               Painel de Mesas
             </h1>
             <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>
-              Acompanhe suas negociações em tempo real.
+              Bem-vindo, {nomeUsuario}. Suas negociações em tempo real.
             </p>
           </div>
 
-          {/* Tabs de perfil */}
           <div style={{ display: 'flex', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 4, gap: 4 }}>
             {(['empresa', 'closer'] as Role[]).map(r => (
               <button
                 key={r}
                 onClick={() => setRole(r)}
                 style={{
-                  padding: '8px 20px', borderRadius: 7, border: 'none',
+                  padding: '8px 18px', borderRadius: 7, border: 'none',
                   background: role === r ? E : 'transparent',
                   color: role === r ? WHITE : MUTED,
                   fontSize: 13, fontWeight: 700, cursor: 'pointer',
@@ -473,30 +486,41 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ── Métricas por perfil ── */}
+        {/* ── Métricas ── */}
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
           {role === 'empresa' ? (
             <>
-              <MetricCard label="SAVING TOTAL ACUMULADO" value={brl(totalSaving)} sub="economia gerada para o cliente" accent />
-              <MetricCard label="MESAS ATIVAS"    value={String(mesasAtivas)} sub="em negociação agora" />
-              <MetricCard label="MESAS CONCLUÍDAS" value={String(mesasConc)}  sub="saving confirmado" />
-              <MetricCard label="RETORNO SOBRE FEE" value={`${(totalSaving / (totalSaving * 0.2 || 1)).toFixed(1)}x`} sub="para cada R$ 1 pago" />
+              <MetricCard label="SAVING TOTAL ACUMULADO"  value={brl(totalSaving)}  sub="economia gerada" accent />
+              <MetricCard label="MESAS ATIVAS"            value={String(mesasAtivas)} sub="em negociação"  />
+              <MetricCard label="MESAS CONCLUÍDAS"        value={String(mesasConc)}   sub="saving confirmado" />
+              <MetricCard label="TAXA MÉDIA DE SAVING"    value={`${taxaMedia.toFixed(1)}%`} sub="das negociações" />
             </>
           ) : (
             <>
-              <MetricCard label="COMISSÕES ESTIMADAS" value={brl(totalComissoes)} sub="70% do fee sobre savings" accent />
-              <MetricCard label="MESAS ATIVAS"     value={String(mesasAtivas)} sub="disponíveis agora" />
-              <MetricCard label="MESAS CONCLUÍDAS" value={String(mesasConc)}  sub="comissões liberadas" />
-              <MetricCard label="TAXA MÉDIA SAVING" value={`${(totalSaving / mesas.reduce((s, m) => s + m.baseline, 0) * 100).toFixed(1)}%`} sub="média das negociações" />
+              <MetricCard label="COMISSÕES ESTIMADAS"  value={brl(totalComissoes)}  sub="70% do fee sobre savings" accent />
+              <MetricCard label="MESAS ATIVAS"         value={String(mesasAtivas)}  sub="disponíveis" />
+              <MetricCard label="MESAS CONCLUÍDAS"     value={String(mesasConc)}    sub="comissões liberadas" />
+              <MetricCard label="TAXA MÉDIA DE SAVING" value={`${taxaMedia.toFixed(1)}%`} sub="média das negociações" />
             </>
           )}
         </div>
 
-        {/* ── Header da tabela ── */}
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem',
-        }}>
+        {/* ── Erro de fetch ── */}
+        {erroFetch && (
+          <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 16px', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span>⚠️</span>
+            <p style={{ fontSize: 13, color: '#DC2626', margin: 0, fontWeight: 500 }}>{erroFetch}</p>
+            <button
+              onClick={() => user && buscarMesas(user.id)}
+              style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: '#DC2626', background: 'none', border: '1px solid #FECACA', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
+            >
+              Tentar novamente
+            </button>
+          </div>
+        )}
+
+        {/* ── Barra da tabela ── */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
           <p style={{ fontSize: 14, fontWeight: 700, color: NAVY, margin: 0 }}>
             {mesas.length} mesa{mesas.length !== 1 ? 's' : ''} encontrada{mesas.length !== 1 ? 's' : ''}
           </p>
@@ -518,60 +542,71 @@ export default function DashboardPage() {
         <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
 
           {/* Cabeçalho */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '110px 1fr 130px 130px 140px 150px 130px',
-            gap: 0,
-            padding: '10px 16px',
-            background: SLATE,
-            borderBottom: `1px solid ${BORDER}`,
-          }}>
-            {['CÓDIGO', 'PRODUTO', 'BASELINE', role === 'empresa' ? 'SAVING' : 'COMISSÃO', 'PRAZO', 'STATUS', 'AÇÃO'].map(col => (
-              <span key={col} style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: '0.07em' }}>{col}</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr 130px 130px 120px 160px 130px', gap: 0, padding: '10px 16px', background: SLATE, borderBottom: `1px solid ${BORDER}` }}>
+            {['CÓDIGO', 'PRODUTO', 'BASELINE', role === 'empresa' ? 'SAVING' : 'COMISSÃO', 'PRAZO', 'STATUS', 'AÇÃO'].map(c => (
+              <span key={c} style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: '0.07em' }}>{c}</span>
             ))}
           </div>
 
+          {/* Estado vazio */}
+          {mesas.length === 0 && (
+            <div style={{ padding: '3rem', textAlign: 'center' }}>
+              <p style={{ fontSize: 32, marginBottom: 12 }}>🤝</p>
+              <p style={{ fontSize: 16, fontWeight: 700, color: NAVY, margin: '0 0 6px' }}>Nenhuma mesa ainda</p>
+              <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1.5rem' }}>Crie sua primeira mesa de negociação e comece a economizar.</p>
+              <button
+                onClick={() => setModalNova(true)}
+                style={{ padding: '10px 24px', background: E, border: 'none', borderRadius: 8, color: WHITE, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+              >
+                + Abrir primeira mesa
+              </button>
+            </div>
+          )}
+
           {/* Linhas */}
           {mesas.map((mesa, i) => {
-            const sc  = statusConfig(mesa.status)
-            const uc  = urgenciaConfig(mesa.diasRestantes)
-            const isLast = i === mesas.length - 1
+            const sc = statusCfg(mesa.status)
+            const uc = urgenciaCfg(mesa.dias_restantes, mesa.status)
+            const valorDestaque = role === 'empresa' ? mesa.saving : calcComissao(mesa.saving)
 
             return (
               <div
                 key={mesa.id}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '110px 1fr 130px 130px 140px 150px 130px',
+                  gridTemplateColumns: '130px 1fr 130px 130px 120px 160px 130px',
                   gap: 0,
                   padding: '14px 16px',
-                  borderBottom: isLast ? 'none' : `1px solid ${BORDER}`,
+                  borderBottom: i === mesas.length - 1 ? 'none' : `1px solid ${BORDER}`,
                   alignItems: 'center',
                   transition: 'background 0.1s',
+                  cursor: 'pointer',
                 }}
                 onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFC')}
                 onMouseLeave={e => (e.currentTarget.style.background = WHITE)}
+                onClick={() => setMesaDetalhe(mesa)}
               >
                 {/* Código */}
-                <span style={{ fontSize: 12, fontWeight: 700, color: E, fontFamily: 'monospace' }}>#{mesa.id}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: E, fontFamily: 'monospace' }}>
+                  #{mesa.id.slice(0, 8).toUpperCase()}
+                </span>
 
                 {/* Produto */}
-                <span style={{ fontSize: 13, color: NAVY, fontWeight: 600, paddingRight: 12, lineHeight: 1.35 }}>{mesa.produto}</span>
+                <span style={{ fontSize: 13, color: NAVY, fontWeight: 600, paddingRight: 12, lineHeight: 1.35 }}>
+                  {mesa.produto}
+                </span>
 
                 {/* Baseline */}
                 <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{brl(mesa.baseline)}</span>
 
                 {/* Saving / Comissão */}
-                <span style={{ fontSize: 13, fontWeight: 800, color: role === 'empresa' ? E : AMBER }}>
-                  {mesa.saving > 0
-                    ? brl(role === 'empresa' ? mesa.saving : calcComissao(mesa.saving))
-                    : <span style={{ color: MUTED, fontWeight: 400 }}>—</span>
-                  }
+                <span style={{ fontSize: 13, fontWeight: 800, color: valorDestaque > 0 ? (role === 'empresa' ? E : AMBER) : MUTED }}>
+                  {valorDestaque > 0 ? brl(valorDestaque) : '—'}
                 </span>
 
                 {/* Prazo */}
                 <div>
-                  <p style={{ fontSize: 12, color: MUTED, margin: '0 0 3px' }}>{mesa.prazoTotal} dias</p>
+                  <p style={{ fontSize: 12, color: MUTED, margin: '0 0 3px' }}>{mesa.prazo_total}d total</p>
                   <Badge text={uc.label} bg={uc.bg} color={uc.color} />
                 </div>
 
@@ -580,9 +615,9 @@ export default function DashboardPage() {
 
                 {/* Ação */}
                 <button
-                  onClick={() => setMesaDetalhe(mesa)}
+                  onClick={e => { e.stopPropagation(); setMesaDetalhe(mesa) }}
                   style={{
-                    padding: '7px 14px', background: 'transparent',
+                    padding: '7px 12px', background: 'transparent',
                     border: `1.5px solid ${BORDER}`, borderRadius: 7,
                     fontSize: 12, fontWeight: 700, color: NAVY,
                     cursor: 'pointer', whiteSpace: 'nowrap',
@@ -597,21 +632,41 @@ export default function DashboardPage() {
           })}
         </div>
 
-        {/* ── Rodapé informativo por perfil ── */}
-        <div style={{ marginTop: '1.5rem', background: role === 'empresa' ? '#ECFDF5' : '#FFFBEB', border: `1px solid ${role === 'empresa' ? '#A7F3D0' : '#FCD34D'}`, borderRadius: 10, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 20 }}>{role === 'empresa' ? '💡' : '💰'}</span>
-          <p style={{ fontSize: 13, color: role === 'empresa' ? '#065F46' : '#92400E', margin: 0, lineHeight: 1.55 }}>
-            {role === 'empresa'
-              ? `Você acumulou ${brl(totalSaving)} em economias. O fee pago foi ${brl(totalSaving * 0.2)} — um retorno de ${(0.8 / 0.2).toFixed(0)}x sobre cada real investido.`
-              : `Suas comissões estimadas são ${brl(totalComissoes)}. Conclua as mesas em aberto para liberar o saque. O split é sempre 70% para você, 30% para a plataforma.`
-            }
-          </p>
-        </div>
+        {/* ── Rodapé informativo ── */}
+        {mesas.length > 0 && (
+          <div style={{
+            marginTop: '1.5rem',
+            background: role === 'empresa' ? '#ECFDF5' : '#FFFBEB',
+            border: `1px solid ${role === 'empresa' ? '#A7F3D0' : '#FCD34D'}`,
+            borderRadius: 10, padding: '1rem 1.25rem',
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <span style={{ fontSize: 20 }}>{role === 'empresa' ? '💡' : '💰'}</span>
+            <p style={{ fontSize: 13, color: role === 'empresa' ? '#065F46' : '#92400E', margin: 0, lineHeight: 1.55 }}>
+              {role === 'empresa'
+                ? `Você acumulou ${brl(totalSaving)} em economias. Fee total pago: ${brl(totalSaving * 0.2)} — retorno de ${totalSaving > 0 ? ((totalSaving * 0.8) / (totalSaving * 0.2)).toFixed(1) : '—'}x sobre cada real investido.`
+                : `Suas comissões estimadas são ${brl(totalComissoes)}. O split é sempre 70% para você, 30% para a plataforma.`
+              }
+            </p>
+          </div>
+        )}
       </main>
 
       {/* ── Modais ── */}
-      {modalNova && <ModalNovaMesa onClose={() => setModalNova(false)} onSalvar={adicionarMesa} />}
-      {mesaDetalhe && <ModalDetalhes mesa={mesaDetalhe} role={role} onClose={() => setMesaDetalhe(null)} />}
+      {modalNova && (
+        <ModalNovaMesa
+          onClose={() => setModalNova(false)}
+          onSalvar={criarMesa}
+          salvando={salvando}
+        />
+      )}
+      {mesaDetalhe && (
+        <ModalDetalhes
+          mesa={mesaDetalhe}
+          role={role}
+          onClose={() => setMesaDetalhe(null)}
+        />
+      )}
 
       <style>{`* { box-sizing: border-box; }`}</style>
     </div>
