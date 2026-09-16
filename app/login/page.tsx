@@ -13,8 +13,20 @@ const BORDER = '#E2E8F0'
 const RED    = '#DC2626'
 const WHITE  = '#FFFFFF'
 const SLATE  = '#F8FAFC'
+const AMBER  = '#F59E0B'
 
-type Tab = 'entrar' | 'criar'
+type Tab  = 'entrar' | 'criar'
+type Role = 'empresa' | 'closer'
+
+// ── Redirect inteligente pelo role do usuário ─────────────────
+function redirectByRole(role: string | undefined, router: ReturnType<typeof useRouter>) {
+  if (role === 'closer') {
+    router.replace('/dashboard/closer')
+  } else {
+    // 'empresa' ou qualquer valor desconhecido → dashboard empresa (default seguro)
+    router.replace('/dashboard/empresa')
+  }
+}
 
 // ── Mensagens de erro traduzidas ──────────────────────────────
 function traduzirErro(msg: string): string {
@@ -45,10 +57,10 @@ function Campo({
   const [focused, setFocused] = useState(false)
   return (
     <div style={{ marginBottom: '1.1rem' }}>
-      <label
-        htmlFor={id}
-        style={{ display: 'block', fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}
-      >
+      <label htmlFor={id} style={{
+        display: 'block', fontSize: 12, fontWeight: 700, color: NAVY,
+        marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em',
+      }}>
         {label}
       </label>
       <input
@@ -56,10 +68,9 @@ function Campo({
         autoComplete={autoComplete}
         onChange={e => onChange(e.target.value)}
         style={{
-          width: '100%', padding: '11px 13px',
-          background: WHITE, border: `1px solid ${focused ? E : BORDER}`,
-          borderRadius: 8, color: NAVY, fontSize: 14, outline: 'none',
-          boxSizing: 'border-box',
+          width: '100%', padding: '11px 13px', background: WHITE,
+          border: `1px solid ${focused ? E : BORDER}`, borderRadius: 8,
+          color: NAVY, fontSize: 14, outline: 'none', boxSizing: 'border-box',
           boxShadow: focused ? `0 0 0 3px ${E}20` : 'none',
           transition: 'border-color 0.15s, box-shadow 0.15s',
         }}
@@ -70,70 +81,171 @@ function Campo({
   )
 }
 
-// ── Página de Login / Cadastro ────────────────────────────────
+// ── Alerta ────────────────────────────────────────────────────
+function Alerta({ tipo, texto }: { tipo: 'erro' | 'sucesso'; texto: string }) {
+  const isErro = tipo === 'erro'
+  return (
+    <div style={{
+      background: isErro ? '#FEF2F2' : '#ECFDF5',
+      border: `1px solid ${isErro ? '#FECACA' : '#A7F3D0'}`,
+      borderRadius: 8, padding: '10px 14px', marginBottom: '1rem',
+      display: 'flex', alignItems: 'flex-start', gap: 8,
+    }}>
+      <span style={{ fontSize: 14, flexShrink: 0 }}>{isErro ? '⚠️' : '✅'}</span>
+      <p style={{ fontSize: 13, color: isErro ? RED : '#065F46', margin: 0, lineHeight: 1.5, fontWeight: 500 }}>
+        {texto}
+      </p>
+    </div>
+  )
+}
+
+// ── Seletor de perfil (Sign Up) ───────────────────────────────
+function SeletorPerfil({ role, onChange }: { role: Role; onChange: (r: Role) => void }) {
+  const opcoes: { value: Role; emoji: string; titulo: string; desc: string; accent: string; accentBg: string }[] = [
+    {
+      value:    'empresa',
+      emoji:    '🏢',
+      titulo:   'Empresa',
+      desc:     'Quero economizar nas compras',
+      accent:   E,
+      accentBg: '#ECFDF5',
+    },
+    {
+      value:    'closer',
+      emoji:    '🎯',
+      titulo:   'Closer / Consultor',
+      desc:     'Quero negociar e ganhar comissão',
+      accent:   AMBER,
+      accentBg: '#FFFBEB',
+    },
+  ]
+
+  return (
+    <div style={{ marginBottom: '1.25rem' }}>
+      <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        Meu perfil *
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        {opcoes.map(op => {
+          const selected = role === op.value
+          return (
+            <button
+              key={op.value}
+              type="button"
+              onClick={() => onChange(op.value)}
+              style={{
+                padding: '12px 10px', borderRadius: 10, cursor: 'pointer',
+                border: `2px solid ${selected ? op.accent : BORDER}`,
+                background: selected ? op.accentBg : WHITE,
+                textAlign: 'left', transition: 'all 0.15s',
+              }}
+            >
+              <div style={{ fontSize: 20, marginBottom: 4 }}>{op.emoji}</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: selected ? op.accent : NAVY, marginBottom: 2 }}>
+                {op.titulo}
+              </div>
+              <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.35 }}>{op.desc}</div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Página principal ──────────────────────────────────────────
 export default function LoginPage() {
   const router = useRouter()
+
   const [tab, setTab]         = useState<Tab>('entrar')
   const [email, setEmail]     = useState('')
   const [senha, setSenha]     = useState('')
   const [nome, setNome]       = useState('')
+  const [role, setRole]       = useState<Role>('empresa')  // perfil selecionado no sign up
   const [erro, setErro]       = useState('')
   const [sucesso, setSucesso] = useState('')
   const [loading, setLoading] = useState(false)
   const [checando, setChecando] = useState(true)
 
-  // Se já está logado, vai direto pro dashboard
+  // Se já está logado, redireciona para o dashboard correto
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.replace('/dashboard')
-      else setChecando(false)
+      if (data.session) {
+        const userRole = data.session.user.user_metadata?.role as string | undefined
+        redirectByRole(userRole, router)
+      } else {
+        setChecando(false)
+      }
     })
   }, [router])
 
   function limpar() { setErro(''); setSucesso('') }
 
+  // ── Login com redirect inteligente ────────────────────────
   async function entrar(e: React.FormEvent) {
     e.preventDefault(); limpar()
     if (!email || !senha) { setErro('Preencha e-mail e senha.'); return }
     setLoading(true)
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha })
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: senha,
+      })
       if (error) throw error
-      router.replace('/dashboard')
+
+      // Lê o role dos metadados e redireciona
+      const userRole = data.user?.user_metadata?.role as string | undefined
+      redirectByRole(userRole, router)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro desconhecido.'
       setErro(traduzirErro(msg))
-    } finally { setLoading(false) }
+    } finally {
+      setLoading(false)
+    }
   }
 
+  // ── Cadastro com role embutido nos metadados ───────────────
   async function criar(e: React.FormEvent) {
     e.preventDefault(); limpar()
-    if (!nome.trim()) { setErro('Informe seu nome.'); return }
-    if (!email)       { setErro('Informe seu e-mail.'); return }
+    if (!nome.trim())     { setErro('Informe seu nome.'); return }
+    if (!email)           { setErro('Informe seu e-mail.'); return }
     if (senha.length < 6) { setErro('A senha deve ter pelo menos 6 caracteres.'); return }
     setLoading(true)
     try {
       const { error } = await supabase.auth.signUp({
         email: email.trim(),
         password: senha,
-        options: { data: { nome_completo: nome.trim() } },
+        options: {
+          data: {
+            nome_completo: nome.trim(),
+            role,            // ← 'empresa' | 'closer' — persiste em user_metadata
+          },
+        },
       })
       if (error) throw error
-      // Verifica se o Supabase enviou e-mail de confirmação
-      setSucesso('Conta criada! Verifique seu e-mail para confirmar o cadastro e depois faça login.')
+      setSucesso(
+        role === 'empresa'
+          ? 'Conta de empresa criada! Confirme seu e-mail e faça login para acessar o painel.'
+          : 'Conta de Closer criada! Confirme seu e-mail e faça login para começar a negociar.'
+      )
       setTab('entrar')
       setSenha('')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro desconhecido.'
       setErro(traduzirErro(msg))
-    } finally { setLoading(false) }
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // Spinner enquanto verifica sessão
+  // Spinner durante verificação de sessão
   if (checando) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: SLATE }}>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ width: 32, height: 32, border: `3px solid ${BORDER}`, borderTopColor: E, borderRadius: '50%', margin: '0 auto 12px', animation: 'spin 0.8s linear infinite' }} />
+        <div style={{
+          width: 32, height: 32, border: `3px solid ${BORDER}`, borderTopColor: E,
+          borderRadius: '50%', margin: '0 auto 12px', animation: 'spin 0.8s linear infinite',
+        }} />
         <p style={{ fontSize: 13, color: MUTED }}>Verificando sessão...</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
       </div>
@@ -143,12 +255,10 @@ export default function LoginPage() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', fontFamily: 'Inter, system-ui, sans-serif', background: SLATE }}>
 
-      {/* ── Lado esquerdo — Branding ── */}
+      {/* ── Branding (lado esquerdo) ── */}
       <div style={{
         flex: 1, padding: '3rem', display: 'flex', flexDirection: 'column',
-        justifyContent: 'space-between', background: WHITE,
-        borderRight: `1px solid ${BORDER}`,
-        // Oculto em mobile via JS — em produção use Tailwind ou media query
+        justifyContent: 'space-between', background: WHITE, borderRight: `1px solid ${BORDER}`,
       }}>
         <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
           <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 40, width: 'auto', objectFit: 'contain' }} />
@@ -158,7 +268,11 @@ export default function LoginPage() {
         </Link>
 
         <div style={{ maxWidth: 440 }}>
-          <div style={{ display: 'inline-block', background: '#ECFDF5', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 20, marginBottom: '1.5rem', letterSpacing: '0.06em' }}>
+          <div style={{
+            display: 'inline-block', background: '#ECFDF5', color: '#065F46',
+            fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 20,
+            marginBottom: '1.5rem', letterSpacing: '0.06em',
+          }}>
             SUCCESS FEE — SEM SAVING, SEM CUSTO
           </div>
           <h1 style={{ fontSize: 30, fontWeight: 800, color: NAVY, lineHeight: 1.25, letterSpacing: '-0.03em', margin: '0 0 1.5rem' }}>
@@ -166,7 +280,21 @@ export default function LoginPage() {
             <span style={{ color: E, fontStyle: 'italic' }}>resultado garantido</span>.
           </h1>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', paddingTop: '2rem', borderTop: `1px solid ${BORDER}` }}>
+          {/* Dois perfis no branding */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
+            {[
+              { emoji: '🏢', titulo: 'Para empresas', desc: 'Cadastre demandas e pague só 20% do saving real gerado.' },
+              { emoji: '🎯', titulo: 'Para Closers', desc: 'Negocie mesas e receba 70% do fee como comissão.' },
+            ].map(p => (
+              <div key={p.titulo} style={{ background: SLATE, borderRadius: 10, padding: '1rem', border: `1px solid ${BORDER}` }}>
+                <div style={{ fontSize: 18, marginBottom: 6 }}>{p.emoji}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 3 }}>{p.titulo}</div>
+                <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.4 }}>{p.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', paddingTop: '1.5rem', borderTop: `1px solid ${BORDER}` }}>
             {[
               { valor: '20%', label: 'fee só sobre saving real' },
               { valor: '100%', label: 'risco zero para o cliente' },
@@ -180,92 +308,93 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <p style={{ fontSize: 12, color: '#CBD5E1' }}>
-          © {new Date().getFullYear()} DeuAcordo.com
-        </p>
+        <p style={{ fontSize: 12, color: '#CBD5E1' }}>© {new Date().getFullYear()} DeuAcordo.com</p>
       </div>
 
-      {/* ── Lado direito — Formulário ── */}
+      {/* ── Formulário (lado direito) ── */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-        <div style={{ width: '100%', maxWidth: 420 }}>
+        <div style={{ width: '100%', maxWidth: 440 }}>
 
-          {/* Tabs */}
-          <div style={{ display: 'flex', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 4, gap: 4, marginBottom: '2rem' }}>
+          {/* Tabs Entrar / Criar */}
+          <div style={{
+            display: 'flex', background: WHITE, border: `1px solid ${BORDER}`,
+            borderRadius: 10, padding: 4, gap: 4, marginBottom: '2rem',
+          }}>
             {(['entrar', 'criar'] as Tab[]).map(t => (
-              <button
-                key={t}
-                onClick={() => { setTab(t); limpar() }}
-                style={{
-                  flex: 1, padding: '10px', border: 'none', borderRadius: 7,
-                  background: tab === t ? NAVY : 'transparent',
-                  color: tab === t ? WHITE : MUTED,
-                  fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                  transition: 'all 0.15s',
-                }}
-              >
+              <button key={t} onClick={() => { setTab(t); limpar() }} style={{
+                flex: 1, padding: '10px', border: 'none', borderRadius: 7,
+                background: tab === t ? NAVY : 'transparent',
+                color: tab === t ? WHITE : MUTED,
+                fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+              }}>
                 {t === 'entrar' ? 'Entrar' : 'Criar Conta'}
               </button>
             ))}
           </div>
 
-          {/* Card do formulário */}
           <div style={{
             background: WHITE, borderRadius: 16, padding: '2rem',
-            border: `1px solid ${BORDER}`,
-            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.04)',
+            border: `1px solid ${BORDER}`, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.04)',
           }}>
-            {tab === 'entrar' ? (
+
+            {/* ── ABA ENTRAR ── */}
+            {tab === 'entrar' && (
               <>
                 <h2 style={{ fontSize: 22, fontWeight: 800, color: NAVY, margin: '0 0 0.25rem' }}>Bem-vindo de volta.</h2>
-                <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1.75rem' }}>Acesse seu painel de mesas.</p>
+                <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1.75rem' }}>
+                  Você será redirecionado para o painel do seu perfil automaticamente.
+                </p>
 
                 <form onSubmit={entrar} noValidate>
-                  <Campo label="E-mail" id="email" type="email" value={email}
+                  <Campo label="E-mail" id="login-email" type="email" value={email}
                     onChange={setEmail} placeholder="seu@email.com.br" autoComplete="email" />
-                  <Campo label="Senha" id="senha" type="password" value={senha}
+                  <Campo label="Senha" id="login-senha" type="password" value={senha}
                     onChange={setSenha} placeholder="••••••••" autoComplete="current-password" />
 
-                  {/* Mensagens */}
-                  {erro    && <Alerta tipo="erro"    texto={erro}    />}
+                  {erro    && <Alerta tipo="erro"    texto={erro} />}
                   {sucesso && <Alerta tipo="sucesso" texto={sucesso} />}
 
-                  <button
-                    type="submit" disabled={loading}
-                    style={{
-                      width: '100%', padding: '13px', marginTop: 8,
-                      background: loading ? '#A7F3D0' : E,
-                      border: 'none', borderRadius: 8,
-                      color: loading ? '#065F46' : WHITE,
-                      fontSize: 15, fontWeight: 700, cursor: loading ? 'wait' : 'pointer',
-                      transition: 'background 0.15s',
-                    }}
-                  >
+                  <button type="submit" disabled={loading} style={{
+                    width: '100%', padding: '13px', marginTop: 8,
+                    background: loading ? '#A7F3D0' : E, border: 'none', borderRadius: 8,
+                    color: loading ? '#065F46' : WHITE,
+                    fontSize: 15, fontWeight: 700, cursor: loading ? 'wait' : 'pointer',
+                    transition: 'background 0.15s',
+                  }}>
                     {loading ? 'Entrando...' : 'Entrar no Painel →'}
                   </button>
                 </form>
 
                 <p style={{ textAlign: 'center', marginTop: '1.25rem', fontSize: 13, color: MUTED }}>
                   Não tem conta?{' '}
-                  <button onClick={() => { setTab('criar'); limpar() }}
-                    style={{ background: 'none', border: 'none', color: E, fontWeight: 700, cursor: 'pointer', fontSize: 13, padding: 0 }}>
+                  <button onClick={() => { setTab('criar'); limpar() }} style={{
+                    background: 'none', border: 'none', color: E,
+                    fontWeight: 700, cursor: 'pointer', fontSize: 13, padding: 0,
+                  }}>
                     Criar agora
                   </button>
                 </p>
               </>
-            ) : (
+            )}
+
+            {/* ── ABA CRIAR ── */}
+            {tab === 'criar' && (
               <>
                 <h2 style={{ fontSize: 22, fontWeight: 800, color: NAVY, margin: '0 0 0.25rem' }}>Criar sua conta.</h2>
-                <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1.75rem' }}>Gratuito. Sem cartão de crédito.</p>
+                <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1.5rem' }}>Gratuito. Sem cartão de crédito.</p>
 
                 <form onSubmit={criar} noValidate>
-                  <Campo label="Seu nome" id="nome" value={nome}
+                  {/* Seletor de perfil — destaque principal */}
+                  <SeletorPerfil role={role} onChange={setRole} />
+
+                  <Campo label="Seu nome" id="criar-nome" value={nome}
                     onChange={setNome} placeholder="João Silva" autoComplete="name" />
-                  <Campo label="E-mail" id="email-c" type="email" value={email}
+                  <Campo label="E-mail" id="criar-email" type="email" value={email}
                     onChange={setEmail} placeholder="seu@email.com.br" autoComplete="email" />
-                  <Campo label="Senha (mínimo 6 caracteres)" id="senha-c" type="password" value={senha}
+                  <Campo label="Senha (mínimo 6 caracteres)" id="criar-senha" type="password" value={senha}
                     onChange={setSenha} placeholder="••••••••" autoComplete="new-password" />
 
-                  {/* Regras de senha */}
+                  {/* Indicador de força da senha */}
                   <div style={{ marginBottom: '1rem' }}>
                     {[
                       { ok: senha.length >= 6, label: 'Pelo menos 6 caracteres' },
@@ -281,27 +410,32 @@ export default function LoginPage() {
                     ))}
                   </div>
 
-                  {erro    && <Alerta tipo="erro"    texto={erro}    />}
+                  {erro    && <Alerta tipo="erro"    texto={erro} />}
                   {sucesso && <Alerta tipo="sucesso" texto={sucesso} />}
 
-                  <button
-                    type="submit" disabled={loading}
-                    style={{
-                      width: '100%', padding: '13px', marginTop: 4,
-                      background: loading ? '#A7F3D0' : E,
-                      border: 'none', borderRadius: 8,
-                      color: loading ? '#065F46' : WHITE,
-                      fontSize: 15, fontWeight: 700, cursor: loading ? 'wait' : 'pointer',
-                    }}
-                  >
-                    {loading ? 'Criando conta...' : 'Criar minha conta →'}
+                  <button type="submit" disabled={loading} style={{
+                    width: '100%', padding: '13px', marginTop: 4,
+                    background: loading ? '#A7F3D0' : role === 'closer' ? AMBER : E,
+                    border: 'none', borderRadius: 8,
+                    color: loading ? '#065F46' : role === 'closer' ? NAVY : WHITE,
+                    fontSize: 15, fontWeight: 700, cursor: loading ? 'wait' : 'pointer',
+                    transition: 'background 0.15s',
+                  }}>
+                    {loading
+                      ? 'Criando conta...'
+                      : role === 'empresa'
+                        ? 'Criar conta de Empresa →'
+                        : 'Criar conta de Closer →'
+                    }
                   </button>
                 </form>
 
                 <p style={{ textAlign: 'center', marginTop: '1.25rem', fontSize: 13, color: MUTED }}>
                   Já tem conta?{' '}
-                  <button onClick={() => { setTab('entrar'); limpar() }}
-                    style={{ background: 'none', border: 'none', color: E, fontWeight: 700, cursor: 'pointer', fontSize: 13, padding: 0 }}>
+                  <button onClick={() => { setTab('entrar'); limpar() }} style={{
+                    background: 'none', border: 'none', color: E,
+                    fontWeight: 700, cursor: 'pointer', fontSize: 13, padding: 0,
+                  }}>
                     Entrar
                   </button>
                 </p>
@@ -319,24 +453,6 @@ export default function LoginPage() {
       </div>
 
       <style>{`* { box-sizing: border-box; }`}</style>
-    </div>
-  )
-}
-
-// ── Componente de alerta reutilizável ──────────────────────────
-function Alerta({ tipo, texto }: { tipo: 'erro' | 'sucesso'; texto: string }) {
-  const isErro = tipo === 'erro'
-  return (
-    <div style={{
-      background: isErro ? '#FEF2F2' : '#ECFDF5',
-      border: `1px solid ${isErro ? '#FECACA' : '#A7F3D0'}`,
-      borderRadius: 8, padding: '10px 14px', marginBottom: '1rem',
-      display: 'flex', alignItems: 'flex-start', gap: 8,
-    }}>
-      <span style={{ fontSize: 14, flexShrink: 0 }}>{isErro ? '⚠️' : '✅'}</span>
-      <p style={{ fontSize: 13, color: isErro ? RED : '#065F46', margin: 0, lineHeight: 1.5, fontWeight: 500 }}>
-        {texto}
-      </p>
     </div>
   )
 }
