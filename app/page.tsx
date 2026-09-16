@@ -286,22 +286,192 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── FOOTER ────────────────────────────────────── */}
-      <footer style={{borderTop:`1px solid ${BORDER}`, padding:'2rem 1.5rem', textAlign:'center'}}>
-        <div style={maxW}>
-          <p style={{fontWeight:800, fontSize:15, color:NAVY, margin:'0 0 0.5rem'}}>
-            DeuAcordo<span style={{color:E}}>.com</span>
-          </p>
-          <p style={{fontSize:13, color:MUTED, margin:'0 0 1rem'}}>
-            Procurement-as-a-Service · Negociação estruturada com resultado garantido
-          </p>
-          <div style={{display:'flex', gap:'1.5rem', justifyContent:'center', fontSize:13}}>
-            <Link href="/empresa" style={{color:MUTED, textDecoration:'none'}}>Para empresas</Link>
-            <Link href="/consultor" style={{color:MUTED, textDecoration:'none'}}>Para consultores</Link>
+      {/* ── FOOTER PREMIUM B2B ── */}
+      <footer
+        style={{
+          position: 'relative',
+          background: 'radial-gradient(circle at 50% 0%, #064E3B 0%, #061A14 35%, #020617 100%)',
+          color: '#F8FAFC',
+          padding: '4.5rem 1.5rem 2.5rem',
+          borderTop: '1px solid rgba(16, 185, 129, 0.2)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Ponto de Brilho Esmeralda Superior */}
+        <div
+          style={{
+            position: 'absolute',
+            top: '-100px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '600px',
+            height: '200px',
+            background: 'radial-gradient(circle, rgba(16, 185, 129, 0.25) 0%, rgba(0,0,0,0) 70%)',
+            pointerEvents: 'none',
+          }}
+        />
+
+        <div style={{ maxWidth: 1180, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+          {/* Grid Principal de Conteúdo */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '3rem',
+              marginBottom: '3.5rem',
+            }}
+          >
+            {/* Coluna 1: Logo & Branding */}
+            <div style={{ gridColumn: 'span 1', maxWidth: 300 }}>
+              <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', marginBottom: '1.25rem' }}>
+                <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 40, width: 'auto', objectFit: 'contain' }} />
+                <span style={{ fontWeight: 800, fontSize: 20, color: '#FFFFFF', letterSpacing: '-0.02em' }}>
+                  DeuAcordo<span style={{ color: '#10B981' }}>.com</span>
+                </span>
+              </Link>
+              <p style={{ fontSize: 13, color: '#94A3B8', lineHeight: 1.6, marginBottom: '1.5rem' }}>
+                A primeira plataforma de Procurement-as-a-Service B2B com modelo Success Fee (20%). Redução real de custos com risco zero.
+              </p>
+              {/* Redes Sociais */}
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                {['LinkedIn', 'Instagram', 'WhatsApp'].map((rede) => (
+                  <a
+                    key={rede}
+                    href="#"
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#10B981',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      textDecoration: 'none',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#10B981'
+                      e.currentTarget.style.color = '#FFFFFF'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'
+                      e.currentTarget.style.color = '#10B981'
+                    }}
+                  >
+                    {rede[0]}
+                  </a>
+                ))}
+              </div>
+            </div>
+
+            {/* Coluna 2: Navegação */}
+            <div>
+              <p style={{ fontSize: 12, fontWeight: 700, color: '#10B981', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '1.25rem' }}>
+                NAVEGAÇÃO
+              </p>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: 13 }}>
+                {[
+                  { label: 'Para Empresas', href: '/empresa' },
+                  { label: 'Para Consultores / Closers', href: '/consultor' },
+                  { label: 'Planos & Success Fee', href: '/#planos' },
+                  { label: 'Categorias & Insumos', href: '/#produtos' },
+                  { label: 'Rede de Negociadores', href: '/#comunidade' },
+                ].map((item) => (
+                  <li key={item.label}>
+                    <Link href={item.href} style={{ color: '#CBD5E1', textDecoration: 'none', transition: 'color 0.15s' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = '#10B981')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = '#CBD5E1')}
+                    >
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Coluna 3: Categorias de Procurement */}
+            <div>
+              <p style={{ fontSize: 12, fontWeight: 700, color: '#10B981', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '1.25rem' }}>
+                CATEGORIAS B2B
+              </p>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: 13 }}>
+                {['Embalagens & Papelão', 'Licenças de Software ERP', 'Frotas & Combustível', 'Logística & Fretes', 'EPIs & Material Operacional'].map((cat) => (
+                  <li key={cat} style={{ color: '#CBD5E1' }}>
+                    {cat}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Coluna 4: Contato & Atendimento */}
+            <div>
+              <p style={{ fontSize: 12, fontWeight: 700, color: '#10B981', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '1.25rem' }}>
+                CONTATO
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: 13, color: '#CBD5E1' }}>
+                <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  ✉️ <span style={{ color: '#F8FAFC', fontWeight: 600 }}>contato@deuacordo.com</span>
+                </p>
+                <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  📍 <span>São Paulo - SP · Brasil</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Coluna 5: Comece Agora */}
+            <div>
+              <p style={{ fontSize: 12, fontWeight: 700, color: '#10B981', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '1.25rem' }}>
+                COMECAR AGORA
+              </p>
+              <p style={{ fontSize: 13, color: '#94A3B8', marginBottom: '1rem', lineHeight: 1.5 }}>
+                Abra sua primeira demanda de compras sem mensalidade e pague apenas se economizar.
+              </p>
+              <Link
+                href="/empresa"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  color: '#10B981',
+                  fontWeight: 700,
+                  fontSize: 14,
+                  textDecoration: 'none',
+                }}
+              >
+                Cadastrar demanda ↗
+              </Link>
+            </div>
           </div>
-          <p style={{fontSize:11, color:'#CBD5E1', marginTop:'1.5rem', margin:'1.5rem 0 0'}}>
-            © {new Date().getFullYear()} DeuAcordo.com · Todos os direitos reservados
-          </p>
+
+          {/* Divisor */}
+          <div style={{ height: 1, background: 'rgba(255, 255, 255, 0.1)', marginBottom: '2rem' }} />
+
+          {/* Rodapé Inferior (Copyright + Termos) */}
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '1rem',
+              fontSize: 12,
+              color: '#64748B',
+            }}
+          >
+            <div>
+              © {new Date().getFullYear()} DeuAcordo.com. Todos os direitos reservados.
+            </div>
+
+            <div style={{ display: 'flex', gap: '1.5rem' }}>
+              <a href="#" style={{ color: '#64748B', textDecoration: 'none' }}>Política de Privacidade</a>
+              <a href="#" style={{ color: '#64748B', textDecoration: 'none' }}>Termos de Uso</a>
+              <a href="#" style={{ color: '#64748B', textDecoration: 'none' }}>Protocolo Duplo-Cego</a>
+            </div>
+          </div>
         </div>
       </footer>
 
