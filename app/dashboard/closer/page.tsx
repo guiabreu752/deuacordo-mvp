@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
+import { getAllDeals, updateDealStatus } from '@/app/actions/deals'
+import { DealStatus } from '@prisma/client'
 
 // ── Paleta ────────────────────────────────────────────────────
 const NAVY   = '#0F172A'
@@ -16,29 +18,6 @@ const WHITE  = '#FFFFFF'
 const AMBER  = '#F59E0B'
 const RED    = '#EF4444'
 
-// ── Tipos ─────────────────────────────────────────────────────
-type StatusMesa =
-  | 'Em Negociação'
-  | 'Aguardando Aprovação'
-  | 'Concluída'
-  | 'Cancelada'
-
-interface Mesa {
-  id: string
-  criado_em: string
-  user_id: string
-  produto: string
-  baseline: number
-  saving: number
-  preco_proposto: number | null
-  prazo_total: number
-  dias_restantes: number
-  status: StatusMesa
-  fornecedor_atual: string
-  fornecedor_proposto: string
-  criado_por_role: 'empresa' | 'closer'
-}
-
 // ── Helpers ───────────────────────────────────────────────────
 const brl = (n: number) =>
   n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -46,23 +25,26 @@ const brl = (n: number) =>
 const calcFee      = (saving: number) => saving * 0.20
 const calcComissao = (saving: number) => saving * 0.20 * 0.70
 
-function statusCfg(s: StatusMesa) {
-  const m: Record<StatusMesa, { bg: string; color: string }> = {
-    'Em Negociação':        { bg: '#DBEAFE', color: '#1D4ED8' },
-    'Aguardando Aprovação': { bg: '#FEF9C3', color: '#854D0E' },
-    'Concluída':            { bg: '#DCFCE7', color: '#166534' },
-    'Cancelada':            { bg: '#FEE2E2', color: '#991B1B' },
+function statusCfg(s: string) {
+  const m: Record<string, { bg: string; color: string }> = {
+    'IN_NEGOTIATION':   { bg: '#DBEAFE', color: '#1D4ED8' },
+    'PENDING_APPROVAL': { bg: '#FEF9C3', color: '#854D0E' },
+    'APPROVED':         { bg: '#DCFCE7', color: '#166534' },
+    'REJECTED':         { bg: '#FEE2E2', color: '#991B1B' },
+    'DRAFT':            { bg: SLATE,     color: MUTED },
   }
-  return m[s]
+  return m[s] || { bg: SLATE, color: MUTED }
 }
 
-function urgenciaCfg(dias: number, status: StatusMesa) {
-  if (status === 'Concluída') return { bg: '#DCFCE7', color: '#166534', label: 'Concluída' }
-  if (status === 'Cancelada') return { bg: '#FEE2E2', color: '#991B1B', label: 'Cancelada' }
-  if (dias <= 0)              return { bg: '#FEE2E2', color: '#991B1B', label: 'Vencida' }
-  if (dias <= 3)              return { bg: '#FEE2E2', color: '#991B1B', label: `${dias}d rest.` }
-  if (dias <= 7)              return { bg: '#FEF9C3', color: '#854D0E', label: `${dias}d rest.` }
-  return                             { bg: SLATE,     color: MUTED,     label: `${dias}d rest.` }
+function labelStatus(s: string) {
+  const m: Record<string, string> = {
+    'IN_NEGOTIATION':   'Em Negociação',
+    'PENDING_APPROVAL': 'Aguardando Aprovação',
+    'APPROVED':         'Concluída',
+    'REJECTED':         'Cancelada',
+    'DRAFT':            'Rascunho',
+  }
+  return m[s] || s
 }
 
 // ── Sub-componentes ───────────────────────────────────────────
@@ -111,9 +93,9 @@ function Spinner() {
   )
 }
 
-// ── Modal Enviar Proposta ─────────────────────────────────────
+// ── Modal Enviar Proposta ──────────────────────────────────────
 function ModalProposta({ mesa, onClose, onEnviar, enviando }: {
-  mesa: Mesa
+  mesa: any
   onClose: () => void
   onEnviar: (mesaId: string, dados: { preco: number; fornecedor: string }) => Promise<void>
   enviando: boolean
@@ -122,21 +104,23 @@ function ModalProposta({ mesa, onClose, onEnviar, enviando }: {
   const [fornecedor, setFornecedor] = useState('')
   const [erroLocal, setErroLocal] = useState('')
 
+  const target = mesa.targetValue ?? 0
+
   const preview = (() => {
     const p = parseFloat(preco.replace(',', '.'))
-    if (!p || p >= mesa.baseline) return null
-    const saving    = mesa.baseline - p
+    if (!p || p >= target) return null
+    const saving    = target - p
     const fee       = calcFee(saving)
     const comissao  = calcComissao(saving)
-    const pct       = (saving / mesa.baseline * 100).toFixed(1)
-    return { saving, fee, comissao, pct, valido: saving / mesa.baseline >= 0.03 }
+    const pct       = ((saving / target) * 100).toFixed(1)
+    return { saving, fee, comissao, pct, valido: (saving / target) >= 0.03 }
   })()
 
   async function submit() {
     const p = parseFloat(preco.replace(',', '.'))
-    if (!p || p <= 0)        { setErroLocal('Informe o preço negociado.'); return }
-    if (p >= mesa.baseline)  { setErroLocal('O preço deve ser menor que o baseline.'); return }
-    if (!fornecedor.trim())  { setErroLocal('Informe o nome do fornecedor.'); return }
+    if (!p || p <= 0)       { setErroLocal('Informe o preço negociado.'); return }
+    if (p >= target)        { setErroLocal('O preço deve ser menor que o baseline.'); return }
+    if (!fornecedor.trim()) { setErroLocal('Informe o nome do fornecedor.'); return }
     if (preview && !preview.valido) { setErroLocal('O saving mínimo para acionar o fee é 3%. Negocie um preço menor.'); return }
     setErroLocal('')
     await onEnviar(mesa.id, { preco: p, fornecedor: fornecedor.trim() })
@@ -158,15 +142,14 @@ function ModalProposta({ mesa, onClose, onEnviar, enviando }: {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
           <div>
             <h2 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: '0 0 4px' }}>Enviar Proposta</h2>
-            <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>{mesa.produto}</p>
+            <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>{mesa.title}</p>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: MUTED, padding: 0 }}>✕</button>
         </div>
 
-        {/* Baseline de referência */}
         <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '0.85rem 1rem', marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: '#991B1B', fontWeight: 700 }}>BASELINE DO CLIENTE</span>
-          <span style={{ fontSize: 18, fontWeight: 800, color: RED }}>{brl(mesa.baseline)}</span>
+          <span style={{ fontSize: 18, fontWeight: 800, color: RED }}>{brl(target)}</span>
         </div>
 
         <div style={{ marginBottom: '1rem' }}>
@@ -177,8 +160,6 @@ function ModalProposta({ mesa, onClose, onEnviar, enviando }: {
             value={preco} placeholder="Ex: 38500"
             onChange={e => setPreco(e.target.value)}
             style={inputStyle}
-            onFocus={e => { e.target.style.borderColor = AMBER; e.target.style.boxShadow = `0 0 0 3px ${AMBER}25` }}
-            onBlur={e => { e.target.style.borderColor = BORDER; e.target.style.boxShadow = 'none' }}
           />
         </div>
 
@@ -190,12 +171,9 @@ function ModalProposta({ mesa, onClose, onEnviar, enviando }: {
             value={fornecedor} placeholder="Ex: Fornecedora Sul Embalagens Ltda"
             onChange={e => setFornecedor(e.target.value)}
             style={inputStyle}
-            onFocus={e => { e.target.style.borderColor = AMBER; e.target.style.boxShadow = `0 0 0 3px ${AMBER}25` }}
-            onBlur={e => { e.target.style.borderColor = BORDER; e.target.style.boxShadow = 'none' }}
           />
         </div>
 
-        {/* Preview do earning do Closer */}
         {preview && (
           <div style={{
             background: preview.valido ? '#FFFBEB' : '#FEF2F2',
@@ -207,9 +185,9 @@ function ModalProposta({ mesa, onClose, onEnviar, enviando }: {
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
               {[
-                { label: 'Saving',    value: `${brl(preview.saving)} (${preview.pct}%)`, color: E },
-                { label: 'Fee (20%)', value: brl(preview.fee),                           color: NAVY },
-                { label: 'Sua comissão (70%)', value: brl(preview.comissao),             color: AMBER },
+                { label: 'Saving',          value: `${brl(preview.saving)} (${preview.pct}%)`, color: E },
+                { label: 'Fee (20%)',       value: brl(preview.fee),                           color: NAVY },
+                { label: 'Sua comissão (70%)', value: brl(preview.comissao),                   color: AMBER },
               ].map(({ label, value, color }) => (
                 <div key={label}>
                   <p style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: '0.06em', margin: '0 0 3px' }}>{label}</p>
@@ -247,14 +225,16 @@ function ModalProposta({ mesa, onClose, onEnviar, enviando }: {
 
 // ── Modal Detalhes (visão closer) ─────────────────────────────
 function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
-  mesa: Mesa
+  mesa: any
   onClose: () => void
-  onEnviarProposta: (mesa: Mesa) => void
+  onEnviarProposta: (mesa: any) => void
 }) {
   const sc         = statusCfg(mesa.status)
-  const comissao   = calcComissao(mesa.saving)
-  const pctSaving  = mesa.baseline > 0 ? (mesa.saving / mesa.baseline * 100).toFixed(1) : '0'
-  const podeEnviar = mesa.status === 'Em Negociação'
+  const saving     = mesa.savingValue ?? 0
+  const target     = mesa.targetValue ?? 0
+  const comissao   = calcComissao(saving)
+  const pctSaving  = target > 0 ? ((saving / target) * 100).toFixed(1) : '0'
+  const podeEnviar = mesa.status === 'IN_NEGOTIATION'
 
   return (
     <div
@@ -268,20 +248,19 @@ function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
             <p style={{ fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: '0.07em', margin: '0 0 4px' }}>
               #{mesa.id.slice(0, 8).toUpperCase()}
             </p>
-            <h2 style={{ fontSize: 16, fontWeight: 800, color: NAVY, margin: '0 0 8px', lineHeight: 1.3 }}>{mesa.produto}</h2>
-            <Badge text={mesa.status} bg={sc.bg} color={sc.color} />
+            <h2 style={{ fontSize: 16, fontWeight: 800, color: NAVY, margin: '0 0 8px', lineHeight: 1.3 }}>{mesa.title}</h2>
+            <Badge text={labelStatus(mesa.status)} bg={sc.bg} color={sc.color} />
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: MUTED, padding: 0, flexShrink: 0 }}>✕</button>
         </div>
 
         <div style={{ padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
-          {/* Earnings do Closer */}
           <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '1.25rem', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
             {[
-              { label: 'BASELINE',         value: brl(mesa.baseline),                                     color: NAVY  },
-              { label: 'SAVING GERADO',    value: mesa.saving > 0 ? `${brl(mesa.saving)} (${pctSaving}%)` : '—', color: E },
-              { label: 'SUA COMISSÃO (70%)', value: mesa.saving > 0 ? brl(comissao) : '—',                color: AMBER },
+              { label: 'BASELINE',            value: brl(target),                                            color: NAVY  },
+              { label: 'SAVING GERADO',       value: saving > 0 ? `${brl(saving)} (${pctSaving}%)` : '—',     color: E },
+              { label: 'SUA COMISSÃO (70%)',  value: saving > 0 ? brl(comissao) : '—',                       color: AMBER },
             ].map(({ label, value, color }) => (
               <div key={label}>
                 <p style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: '0.06em', margin: '0 0 4px' }}>{label}</p>
@@ -290,13 +269,10 @@ function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
             ))}
           </div>
 
-          {/* Dados da mesa */}
           <div style={{ background: SLATE, borderRadius: 10, padding: '1rem' }}>
             {[
-              { label: 'Aberta em',        value: new Date(mesa.criado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }) },
-              { label: 'Prazo total',      value: `${mesa.prazo_total} dias` },
-              { label: 'Dias restantes',   value: mesa.dias_restantes > 0 ? `${mesa.dias_restantes} dias` : 'Vencida' },
-              { label: 'Fornecedor atual (cliente)', value: mesa.fornecedor_atual },
+              { label: 'Aberta em', value: new Date(mesa.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }) },
+              { label: 'Empresa',   value: mesa.organization?.name || 'Cliente B2B' },
             ].map(({ label, value }) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: `1px solid ${BORDER}`, fontSize: 13 }}>
                 <span style={{ color: MUTED }}>{label}</span>
@@ -305,23 +281,6 @@ function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
             ))}
           </div>
 
-          {/* Proposta atual (se já enviada) */}
-          {mesa.preco_proposto && (
-            <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10, padding: '1rem' }}>
-              <p style={{ fontSize: 12, fontWeight: 700, color: '#065F46', letterSpacing: '0.06em', margin: '0 0 8px' }}>PROPOSTA ENVIADA</p>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <p style={{ fontSize: 13, color: '#047857', margin: '0 0 2px' }}>{mesa.fornecedor_proposto}</p>
-                  <p style={{ fontSize: 18, fontWeight: 800, color: E, margin: 0 }}>{brl(mesa.preco_proposto)}</p>
-                </div>
-                <p style={{ fontSize: 11, color: '#065F46', background: '#A7F3D0', padding: '4px 10px', borderRadius: 20, fontWeight: 700, margin: 0 }}>
-                  Aguardando aprovação
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* CTA enviar proposta */}
           {podeEnviar && (
             <button
               onClick={() => { onClose(); onEnviarProposta(mesa) }}
@@ -331,11 +290,11 @@ function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
                 fontSize: 15, fontWeight: 700, cursor: 'pointer',
               }}
             >
-              🎯 {mesa.preco_proposto ? 'Atualizar Proposta' : 'Enviar Proposta ao Cliente'}
+              🎯 {mesa.currentValue ? 'Atualizar Proposta' : 'Enviar Proposta ao Cliente'}
             </button>
           )}
 
-          {mesa.status === 'Aguardando Aprovação' && (
+          {mesa.status === 'PENDING_APPROVAL' && (
             <div style={{ background: '#FEF9C3', border: '1px solid #FCD34D', borderRadius: 8, padding: '0.9rem', textAlign: 'center' }}>
               <p style={{ fontSize: 13, color: '#92400E', margin: 0, fontWeight: 600 }}>
                 ⏳ Proposta enviada — aguardando aprovação do cliente para liberar sua comissão.
@@ -343,7 +302,7 @@ function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
             </div>
           )}
 
-          {mesa.status === 'Concluída' && (
+          {mesa.status === 'APPROVED' && (
             <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 8, padding: '0.9rem', textAlign: 'center' }}>
               <p style={{ fontSize: 13, color: '#065F46', margin: 0, fontWeight: 700 }}>
                 ✅ Mesa concluída! Comissão de {brl(comissao)} liberada para saque.
@@ -360,35 +319,25 @@ function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
 export default function DashboardCloserPage() {
   const router = useRouter()
   const [user, setUser]                 = useState<User | null>(null)
-  const [mesas, setMesas]               = useState<Mesa[]>([])
+  const [mesas, setMesas]               = useState<any[]>([])
   const [carregando, setCarregando]     = useState(true)
   const [erroFetch, setErroFetch]       = useState('')
-  const [mesaDetalhe, setMesaDetalhe]   = useState<Mesa | null>(null)
-  const [mesaProposta, setMesaProposta] = useState<Mesa | null>(null)
+  const [mesaDetalhe, setMesaDetalhe]   = useState<any | null>(null)
+  const [mesaProposta, setMesaProposta] = useState<any | null>(null)
   const [enviando, setEnviando]         = useState(false)
   const [saindo, setSaindo]             = useState(false)
-  const [filtroStatus, setFiltroStatus] = useState<StatusMesa | 'Todas'>('Todas')
+  const [filtroStatus, setFiltroStatus] = useState<string>('Todas')
 
-  // Para o Closer, buscamos TODAS as mesas disponíveis (das empresas)
-  // Em produção você teria uma lógica de "mesas disponíveis" vs "minhas mesas"
-  // Aqui mostramos as mesas criadas pelo próprio closer (criado_por_role = 'closer')
-  // e as atribuídas via admin. Adaptável à sua regra de negócio.
-  const buscarMesas = useCallback(async (uid: string) => {
+  const buscarMesas = useCallback(async () => {
     setErroFetch('')
-    try {
-      const { data, error } = await supabase
-        .from('mesas')
-        .select('*')
-        .eq('user_id', uid)
-        .order('criado_em', { ascending: false })
-      if (error) throw error
-      setMesas((data as Mesa[]) ?? [])
-    } catch (err: unknown) {
-      setErroFetch(err instanceof Error ? err.message : 'Erro ao carregar mesas.')
+    const res = await getAllDeals()
+    if (res.success && res.data) {
+      setMesas(res.data)
+    } else {
+      setErroFetch(res.error || 'Erro ao carregar mesas.')
     }
   }, [])
 
-  // ── Proteção de rota com verificação de role ───────────────
   useEffect(() => {
     let mounted = true
     async function init() {
@@ -397,15 +346,13 @@ export default function DashboardCloserPage() {
       if (!u) { router.replace('/login'); return }
 
       const role = u.user_metadata?.role as string | undefined
-
-      // Se for empresa, manda para o dashboard correto
       if (role === 'empresa') {
         router.replace('/dashboard/empresa')
         return
       }
 
       setUser(u)
-      await buscarMesas(u.id)
+      await buscarMesas()
       if (mounted) setCarregando(false)
     }
     init()
@@ -422,28 +369,14 @@ export default function DashboardCloserPage() {
     router.replace('/login')
   }
 
-  // ── Enviar proposta — atualiza a mesa no Supabase ──────────
   async function enviarProposta(mesaId: string, dados: { preco: number; fornecedor: string }) {
     if (!user) return
     setEnviando(true)
     try {
-      const mesa = mesas.find(m => m.id === mesaId)
-      if (!mesa) throw new Error('Mesa não encontrada.')
+      const res = await updateDealStatus(mesaId, DealStatus.PENDING_APPROVAL, dados.preco)
+      if (!res.success) throw new Error(res.error)
 
-      const saving = mesa.baseline - dados.preco
-
-      const { error } = await supabase
-        .from('mesas')
-        .update({
-          preco_proposto:      dados.preco,
-          fornecedor_proposto: dados.fornecedor,
-          saving,
-          status: 'Aguardando Aprovação',
-        })
-        .eq('id', mesaId)
-
-      if (error) throw error
-      await buscarMesas(user.id)
+      await buscarMesas()
       setMesaProposta(null)
     } catch (err: unknown) {
       setErroFetch(err instanceof Error ? err.message : 'Erro ao enviar proposta.')
@@ -452,17 +385,15 @@ export default function DashboardCloserPage() {
     }
   }
 
-  // ── Métricas ──────────────────────────────────────────────
-  const totalComissoes   = mesas.reduce((s, m) => s + calcComissao(m.saving ?? 0), 0)
-  const comissoesLiberadas = mesas.filter(m => m.status === 'Concluída').reduce((s, m) => s + calcComissao(m.saving ?? 0), 0)
-  const mesasAtivas      = mesas.filter(m => m.status === 'Em Negociação').length
-  const mesasPendentes   = mesas.filter(m => m.status === 'Aguardando Aprovação').length
-  const mesasConc        = mesas.filter(m => m.status === 'Concluída').length
-  const taxaFechamento   = mesas.length > 0 ? (mesasConc / mesas.length * 100).toFixed(0) : '0'
+  const totalComissoes   = mesas.reduce((s, m) => s + calcComissao(m.savingValue ?? 0), 0)
+  const comissoesLiberadas = mesas.filter(m => m.status === 'APPROVED').reduce((s, m) => s + calcComissao(m.savingValue ?? 0), 0)
+  const mesasAtivas      = mesas.filter(m => m.status === 'IN_NEGOTIATION').length
+  const mesasPendentes   = mesas.filter(m => m.status === 'PENDING_APPROVAL').length
+  const mesasConc        = mesas.filter(m => m.status === 'APPROVED').length
+  const taxaFechamento   = mesas.length > 0 ? ((mesasConc / mesas.length) * 100).toFixed(0) : '0'
 
   const nomeUsuario = (user?.user_metadata?.nome_completo as string | undefined)?.split(' ')[0] ?? user?.email?.split('@')[0] ?? 'Closer'
 
-  // ── Filtro de status ──────────────────────────────────────
   const mesasFiltradas = filtroStatus === 'Todas'
     ? mesas
     : mesas.filter(m => m.status === filtroStatus)
@@ -472,7 +403,6 @@ export default function DashboardCloserPage() {
   return (
     <div style={{ minHeight: '100vh', background: SLATE, fontFamily: 'Inter, system-ui, sans-serif' }}>
 
-      {/* ── Header ── */}
       <header style={{ background: WHITE, borderBottom: `1px solid ${BORDER}`, padding: '0.9rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
           <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 34, width: 'auto', objectFit: 'contain' }} />
@@ -501,7 +431,6 @@ export default function DashboardCloserPage() {
 
       <main style={{ maxWidth: 1100, margin: '0 auto', padding: '2rem 1.5rem' }}>
 
-        {/* Título */}
         <div style={{ marginBottom: '2rem' }}>
           <h1 style={{ fontSize: 23, fontWeight: 800, color: NAVY, margin: '0 0 3px' }}>
             Cockpit do Closer
@@ -511,7 +440,6 @@ export default function DashboardCloserPage() {
           </p>
         </div>
 
-        {/* Alerta de comissões liberadas */}
         {comissoesLiberadas > 0 && (
           <div style={{
             background: '#FFFBEB', border: '1.5px solid #FCD34D', borderRadius: 10,
@@ -526,7 +454,6 @@ export default function DashboardCloserPage() {
           </div>
         )}
 
-        {/* Métricas */}
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
           <MetricCard
             label="COMISSÕES TOTAIS ESTIMADAS"
@@ -540,32 +467,33 @@ export default function DashboardCloserPage() {
           <MetricCard label="TAXA DE FECHAMENTO"     value={`${taxaFechamento}%`}    sub={`${mesasConc} de ${mesas.length} mesas`} />
         </div>
 
-        {/* Erro */}
         {erroFetch && (
           <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 16px', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 10 }}>
             <span>⚠️</span>
             <p style={{ fontSize: 13, color: '#DC2626', margin: 0, fontWeight: 500 }}>{erroFetch}</p>
-            <button onClick={() => user && buscarMesas(user.id)} style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: '#DC2626', background: 'none', border: '1px solid #FECACA', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>
-              Tentar novamente
-            </button>
           </div>
         )}
 
-        {/* Filtros de status */}
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {(['Todas', 'Em Negociação', 'Aguardando Aprovação', 'Concluída', 'Cancelada'] as const).map(f => (
+            {[
+              { id: 'Todas', label: 'Todas' },
+              { id: 'IN_NEGOTIATION', label: 'Em Negociação' },
+              { id: 'PENDING_APPROVAL', label: 'Aguardando Aprovação' },
+              { id: 'APPROVED', label: 'Concluída' },
+              { id: 'REJECTED', label: 'Cancelada' },
+            ].map(f => (
               <button
-                key={f}
-                onClick={() => setFiltroStatus(f)}
+                key={f.id}
+                onClick={() => setFiltroStatus(f.id)}
                 style={{
-                  padding: '6px 14px', borderRadius: 20, border: `1px solid ${filtroStatus === f ? AMBER : BORDER}`,
-                  background: filtroStatus === f ? '#FFFBEB' : WHITE,
-                  color: filtroStatus === f ? '#92400E' : MUTED,
+                  padding: '6px 14px', borderRadius: 20, border: `1px solid ${filtroStatus === f.id ? AMBER : BORDER}`,
+                  background: filtroStatus === f.id ? '#FFFBEB' : WHITE,
+                  color: filtroStatus === f.id ? '#92400E' : MUTED,
                   fontSize: 12, fontWeight: 600, cursor: 'pointer',
                 }}
               >
-                {f} {f !== 'Todas' && `(${mesas.filter(m => m.status === f).length})`}
+                {f.label} {f.id !== 'Todas' && `(${mesas.filter(m => m.status === f.id).length})`}
               </button>
             ))}
           </div>
@@ -574,11 +502,10 @@ export default function DashboardCloserPage() {
           </p>
         </div>
 
-        {/* Tabela */}
         <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px 150px 110px 165px 130px', padding: '10px 16px', background: SLATE, borderBottom: `1px solid ${BORDER}` }}>
-            {['CÓDIGO', 'PRODUTO', 'BASELINE', 'COMISSÃO EST.', 'PRAZO', 'STATUS', 'AÇÃO'].map(c => (
+          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px 150px 165px 130px', padding: '10px 16px', background: SLATE, borderBottom: `1px solid ${BORDER}` }}>
+            {['CÓDIGO', 'PRODUTO', 'BASELINE', 'COMISSÃO EST.', 'STATUS', 'AÇÃO'].map(c => (
               <span key={c} style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: '0.07em' }}>{c}</span>
             ))}
           </div>
@@ -589,27 +516,20 @@ export default function DashboardCloserPage() {
               <p style={{ fontSize: 16, fontWeight: 700, color: NAVY, margin: '0 0 6px' }}>
                 {mesas.length === 0 ? 'Nenhuma mesa atribuída ainda' : 'Nenhuma mesa com esse filtro'}
               </p>
-              <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>
-                {mesas.length === 0
-                  ? 'Aguarde a atribuição de mesas pelo time DeuAcordo.'
-                  : 'Tente outro filtro de status.'
-                }
-              </p>
             </div>
           )}
 
           {mesasFiltradas.map((mesa, i) => {
             const sc       = statusCfg(mesa.status)
-            const uc       = urgenciaCfg(mesa.dias_restantes, mesa.status)
-            const comissao = calcComissao(mesa.saving ?? 0)
-            const podeEnviar = mesa.status === 'Em Negociação'
+            const comissao = calcComissao(mesa.savingValue ?? 0)
+            const podeEnviar = mesa.status === 'IN_NEGOTIATION'
 
             return (
               <div
                 key={mesa.id}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '120px 1fr 130px 150px 110px 165px 130px',
+                  gridTemplateColumns: '120px 1fr 130px 150px 165px 130px',
                   padding: '14px 16px',
                   borderBottom: i === mesasFiltradas.length - 1 ? 'none' : `1px solid ${BORDER}`,
                   alignItems: 'center',
@@ -625,25 +545,19 @@ export default function DashboardCloserPage() {
                 </span>
 
                 <span style={{ fontSize: 13, color: NAVY, fontWeight: 600, paddingRight: 12, lineHeight: 1.35 }}>
-                  {mesa.produto}
+                  {mesa.title}
                 </span>
 
                 <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>
-                  {brl(mesa.baseline)}
+                  {brl(mesa.targetValue ?? 0)}
                 </span>
 
                 <span style={{ fontSize: 13, fontWeight: 800, color: comissao > 0 ? AMBER : MUTED }}>
                   {comissao > 0 ? brl(comissao) : '—'}
                 </span>
 
-                <div>
-                  <p style={{ fontSize: 12, color: MUTED, margin: '0 0 3px' }}>{mesa.prazo_total}d total</p>
-                  <Badge text={uc.label} bg={uc.bg} color={uc.color} />
-                </div>
+                <Badge text={labelStatus(mesa.status)} bg={sc.bg} color={sc.color} />
 
-                <Badge text={mesa.status} bg={sc.bg} color={sc.color} />
-
-                {/* Ação diferenciada por status */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <button
                     onClick={e => { e.stopPropagation(); setMesaDetalhe(mesa) }}
@@ -652,8 +566,6 @@ export default function DashboardCloserPage() {
                       border: `1.5px solid ${BORDER}`, borderRadius: 6,
                       fontSize: 11, fontWeight: 700, color: NAVY, cursor: 'pointer', whiteSpace: 'nowrap',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = AMBER; e.currentTarget.style.color = '#92400E' }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = BORDER; e.currentTarget.style.color = NAVY }}
                   >
                     Ver Detalhes →
                   </button>
@@ -674,25 +586,8 @@ export default function DashboardCloserPage() {
             )
           })}
         </div>
-
-        {/* Rodapé informativo */}
-        {mesas.length > 0 && (
-          <div style={{
-            marginTop: '1.5rem', background: '#FFFBEB',
-            border: '1px solid #FCD34D', borderRadius: 10,
-            padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: 12,
-          }}>
-            <span style={{ fontSize: 20 }}>💰</span>
-            <p style={{ fontSize: 13, color: '#92400E', margin: 0, lineHeight: 1.55 }}>
-              Suas comissões estimadas são <strong>{brl(totalComissoes)}</strong>.
-              Já liberadas para saque: <strong>{brl(comissoesLiberadas)}</strong>.
-              O split é sempre <strong>70% para você</strong>, 30% para a plataforma.
-            </p>
-          </div>
-        )}
       </main>
 
-      {/* Modais */}
       {mesaDetalhe && (
         <ModalDetalhes
           mesa={mesaDetalhe}

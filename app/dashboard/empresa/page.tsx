@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
+import { getDealsByOrganization, createDeal, updateDealStatus } from '@/app/actions/deals'
+import { DealStatus } from '@prisma/client'
 
 // ── Paleta ────────────────────────────────────────────────────
 const NAVY   = '#0F172A'
@@ -14,29 +16,6 @@ const BORDER = '#E2E8F0'
 const SLATE  = '#F8FAFC'
 const WHITE  = '#FFFFFF'
 const RED    = '#EF4444'
-
-// ── Tipos ─────────────────────────────────────────────────────
-type StatusMesa =
-  | 'Em Negociação'
-  | 'Aguardando Aprovação'
-  | 'Concluída'
-  | 'Cancelada'
-
-interface Mesa {
-  id: string
-  criado_em: string
-  user_id: string
-  produto: string
-  baseline: number
-  saving: number
-  preco_proposto: number | null
-  prazo_total: number
-  dias_restantes: number
-  status: StatusMesa
-  fornecedor_atual: string
-  fornecedor_proposto: string
-  criado_por_role: 'empresa' | 'closer'
-}
 
 interface FormNovaMesa {
   produto: string
@@ -51,23 +30,26 @@ const brl = (n: number) =>
 
 const calcFee = (saving: number) => saving * 0.20
 
-function statusCfg(s: StatusMesa) {
-  const m: Record<StatusMesa, { bg: string; color: string }> = {
-    'Em Negociação':        { bg: '#DBEAFE', color: '#1D4ED8' },
-    'Aguardando Aprovação': { bg: '#FEF9C3', color: '#854D0E' },
-    'Concluída':            { bg: '#DCFCE7', color: '#166534' },
-    'Cancelada':            { bg: '#FEE2E2', color: '#991B1B' },
+function statusCfg(s: string) {
+  const m: Record<string, { bg: string; color: string }> = {
+    'IN_NEGOTIATION':   { bg: '#DBEAFE', color: '#1D4ED8' },
+    'PENDING_APPROVAL': { bg: '#FEF9C3', color: '#854D0E' },
+    'APPROVED':         { bg: '#DCFCE7', color: '#166534' },
+    'REJECTED':         { bg: '#FEE2E2', color: '#991B1B' },
+    'DRAFT':            { bg: SLATE,     color: MUTED },
   }
-  return m[s]
+  return m[s] || { bg: SLATE, color: MUTED }
 }
 
-function urgenciaCfg(dias: number, status: StatusMesa) {
-  if (status === 'Concluída') return { bg: '#DCFCE7', color: '#166534', label: 'Concluída' }
-  if (status === 'Cancelada') return { bg: '#FEE2E2', color: '#991B1B', label: 'Cancelada' }
-  if (dias <= 0)              return { bg: '#FEE2E2', color: '#991B1B', label: 'Vencida' }
-  if (dias <= 3)              return { bg: '#FEE2E2', color: '#991B1B', label: `${dias}d rest.` }
-  if (dias <= 7)              return { bg: '#FEF9C3', color: '#854D0E', label: `${dias}d rest.` }
-  return                             { bg: SLATE,     color: MUTED,     label: `${dias}d rest.` }
+function labelStatus(s: string) {
+  const m: Record<string, string> = {
+    'IN_NEGOTIATION':   'Em Negociação',
+    'PENDING_APPROVAL': 'Aguardando Aprovação',
+    'APPROVED':         'Concluída',
+    'REJECTED':         'Cancelada',
+    'DRAFT':            'Rascunho',
+  }
+  return m[s] || s
 }
 
 // ── Sub-componentes compartilhados ────────────────────────────
@@ -218,14 +200,16 @@ function ModalNovaMesa({ onClose, onSalvar, salvando }: {
 
 // ── Modal Detalhes (visão empresa) ────────────────────────────
 function ModalDetalhes({ mesa, onClose, onAprovar, aprovando }: {
-  mesa: Mesa
+  mesa: any
   onClose: () => void
   onAprovar: (id: string) => Promise<void>
   aprovando: boolean
 }) {
   const sc  = statusCfg(mesa.status)
-  const fee = calcFee(mesa.saving)
-  const pctSaving = mesa.baseline > 0 ? (mesa.saving / mesa.baseline * 100).toFixed(1) : '0'
+  const fee = calcFee(mesa.savingValue ?? 0)
+  const target = mesa.targetValue ?? 0
+  const saving = mesa.savingValue ?? 0
+  const pctSaving = target > 0 ? ((saving / target) * 100).toFixed(1) : '0'
 
   return (
     <div
@@ -234,26 +218,24 @@ function ModalDetalhes({ mesa, onClose, onAprovar, aprovando }: {
     >
       <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 580, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
 
-        {/* Header */}
         <div style={{ padding: '1.5rem 2rem', borderBottom: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <p style={{ fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: '0.07em', margin: '0 0 4px' }}>
               #{mesa.id.slice(0, 8).toUpperCase()}
             </p>
-            <h2 style={{ fontSize: 16, fontWeight: 800, color: NAVY, margin: '0 0 8px', lineHeight: 1.3 }}>{mesa.produto}</h2>
-            <Badge text={mesa.status} bg={sc.bg} color={sc.color} />
+            <h2 style={{ fontSize: 16, fontWeight: 800, color: NAVY, margin: '0 0 8px', lineHeight: 1.3 }}>{mesa.title}</h2>
+            <Badge text={labelStatus(mesa.status)} bg={sc.bg} color={sc.color} />
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: MUTED, padding: 0, flexShrink: 0 }}>✕</button>
         </div>
 
         <div style={{ padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
-          {/* Financeiro */}
           <div style={{ background: SLATE, borderRadius: 10, padding: '1.25rem', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
             {[
-              { label: 'BASELINE',      value: brl(mesa.baseline), color: NAVY },
-              { label: 'SAVING GERADO', value: mesa.saving > 0 ? `${brl(mesa.saving)} (${pctSaving}%)` : '—', color: E },
-              { label: 'FEE (20%)',     value: mesa.saving > 0 ? brl(fee) : '—', color: NAVY },
+              { label: 'BASELINE',      value: brl(target), color: NAVY },
+              { label: 'SAVING GERADO', value: saving > 0 ? `${brl(saving)} (${pctSaving}%)` : '—', color: E },
+              { label: 'FEE (20%)',     value: saving > 0 ? brl(fee) : '—', color: NAVY },
             ].map(({ label, value, color }) => (
               <div key={label}>
                 <p style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: '0.06em', margin: '0 0 4px' }}>{label}</p>
@@ -262,31 +244,9 @@ function ModalDetalhes({ mesa, onClose, onAprovar, aprovando }: {
             ))}
           </div>
 
-          {/* Comparativo de fornecedores */}
-          <div>
-            <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, letterSpacing: '0.05em', margin: '0 0 10px' }}>COMPARATIVO DE FORNECEDORES</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '0.9rem' }}>
-                <p style={{ fontSize: 10, fontWeight: 700, color: RED, letterSpacing: '0.06em', margin: '0 0 4px' }}>FORNECEDOR ATUAL</p>
-                <p style={{ fontSize: 13, fontWeight: 700, color: NAVY, margin: '0 0 2px' }}>{mesa.fornecedor_atual}</p>
-                <p style={{ fontSize: 14, fontWeight: 800, color: RED, margin: 0 }}>{brl(mesa.baseline)}</p>
-              </div>
-              <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 8, padding: '0.9rem' }}>
-                <p style={{ fontSize: 10, fontWeight: 700, color: '#065F46', letterSpacing: '0.06em', margin: '0 0 4px' }}>PROPOSTA NEGOCIADA</p>
-                <p style={{ fontSize: 13, fontWeight: 700, color: NAVY, margin: '0 0 2px' }}>{mesa.fornecedor_proposto}</p>
-                <p style={{ fontSize: 14, fontWeight: 800, color: E, margin: 0 }}>
-                  {mesa.preco_proposto ? brl(mesa.preco_proposto) : '—'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Dados da mesa */}
           <div style={{ background: SLATE, borderRadius: 10, padding: '1rem' }}>
             {[
-              { label: 'Criado em',     value: new Date(mesa.criado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }) },
-              { label: 'Prazo total',   value: `${mesa.prazo_total} dias` },
-              { label: 'Dias restantes', value: mesa.dias_restantes > 0 ? `${mesa.dias_restantes} dias` : 'Vencida' },
+              { label: 'Criado em', value: new Date(mesa.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }) },
             ].map(({ label, value }) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${BORDER}`, fontSize: 13 }}>
                 <span style={{ color: MUTED }}>{label}</span>
@@ -295,14 +255,13 @@ function ModalDetalhes({ mesa, onClose, onAprovar, aprovando }: {
             ))}
           </div>
 
-          {/* Botão de aprovação — só aparece se há proposta aguardando */}
-          {mesa.status === 'Aguardando Aprovação' && mesa.preco_proposto && (
+          {mesa.status === 'PENDING_APPROVAL' && (
             <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 12, padding: '1.25rem' }}>
               <p style={{ fontSize: 13, fontWeight: 700, color: '#065F46', margin: '0 0 4px' }}>
                 🎉 Proposta disponível para aprovação!
               </p>
               <p style={{ fontSize: 13, color: '#047857', margin: '0 0 1rem', lineHeight: 1.5 }}>
-                Saving de <strong>{pctSaving}%</strong> ({brl(mesa.saving)}) gerado.
+                Saving de <strong>{pctSaving}%</strong> ({brl(saving)}) gerado.
                 Fee a pagar: <strong>{brl(fee)}</strong>.
               </p>
               <button
@@ -328,31 +287,25 @@ function ModalDetalhes({ mesa, onClose, onAprovar, aprovando }: {
 export default function DashboardEmpresaPage() {
   const router = useRouter()
   const [user, setUser]               = useState<User | null>(null)
-  const [mesas, setMesas]             = useState<Mesa[]>([])
+  const [mesas, setMesas]             = useState<any[]>([])
   const [carregando, setCarregando]   = useState(true)
   const [erroFetch, setErroFetch]     = useState('')
   const [modalNova, setModalNova]     = useState(false)
   const [salvando, setSalvando]       = useState(false)
-  const [mesaDetalhe, setMesaDetalhe] = useState<Mesa | null>(null)
+  const [mesaDetalhe, setMesaDetalhe] = useState<any | null>(null)
   const [aprovando, setAprovando]     = useState(false)
   const [saindo, setSaindo]           = useState(false)
 
-  const buscarMesas = useCallback(async (uid: string) => {
+  const buscarMesas = useCallback(async (orgId: string) => {
     setErroFetch('')
-    try {
-      const { data, error } = await supabase
-        .from('mesas')
-        .select('*')
-        .eq('user_id', uid)
-        .order('criado_em', { ascending: false })
-      if (error) throw error
-      setMesas((data as Mesa[]) ?? [])
-    } catch (err: unknown) {
-      setErroFetch(err instanceof Error ? err.message : 'Erro ao carregar mesas.')
+    const res = await getDealsByOrganization(orgId)
+    if (res.success && res.data) {
+      setMesas(res.data)
+    } else {
+      setErroFetch(res.error || 'Erro ao carregar mesas.')
     }
   }, [])
 
-  // ── Proteção de rota com verificação de role ───────────────
   useEffect(() => {
     let mounted = true
     async function init() {
@@ -361,15 +314,14 @@ export default function DashboardEmpresaPage() {
       if (!u) { router.replace('/login'); return }
 
       const role = u.user_metadata?.role as string | undefined
-
-      // Se for closer, manda para o dashboard correto
       if (role === 'closer') {
         router.replace('/dashboard/closer')
         return
       }
 
       setUser(u)
-      await buscarMesas(u.id)
+      const orgId = u.user_metadata?.organizationId || 'default-org-id'
+      await buscarMesas(orgId)
       if (mounted) setCarregando(false)
     }
     init()
@@ -390,22 +342,21 @@ export default function DashboardEmpresaPage() {
     if (!user) return
     setSalvando(true)
     try {
-      const prazo = parseInt(form.prazo) || 15
-      const { error } = await supabase.from('mesas').insert({
-        user_id:             user.id,
-        produto:             form.produto.trim(),
-        baseline:            parseFloat(form.baseline.replace(',', '.')) || 0,
-        saving:              0,
-        preco_proposto:      null,
-        prazo_total:         prazo,
-        dias_restantes:      prazo,
-        status:              'Em Negociação',
-        fornecedor_atual:    'A definir',
-        fornecedor_proposto: 'Aguardando Closer',
-        criado_por_role:     'empresa',
+      const orgId = user.user_metadata?.organizationId || 'default-org-id'
+      const target = parseFloat(form.baseline.replace(',', '.')) || 0
+      const current = parseFloat(form.preco_alvo.replace(',', '.')) || 0
+
+      const res = await createDeal({
+        title: form.produto.trim(),
+        targetValue: target,
+        currentValue: current,
+        organizationId: orgId,
+        createdById: user.id,
       })
-      if (error) throw error
-      await buscarMesas(user.id)
+
+      if (!res.success) throw new Error(res.error)
+
+      await buscarMesas(orgId)
       setModalNova(false)
     } catch (err: unknown) {
       setErroFetch(err instanceof Error ? err.message : 'Erro ao criar mesa.')
@@ -417,12 +368,11 @@ export default function DashboardEmpresaPage() {
   async function aprovarMesa(mesaId: string) {
     setAprovando(true)
     try {
-      const { error } = await supabase
-        .from('mesas')
-        .update({ status: 'Concluída' })
-        .eq('id', mesaId)
-      if (error) throw error
-      await buscarMesas(user!.id)
+      const res = await updateDealStatus(mesaId, DealStatus.APPROVED)
+      if (!res.success) throw new Error(res.error)
+
+      const orgId = user?.user_metadata?.organizationId || 'default-org-id'
+      await buscarMesas(orgId)
       setMesaDetalhe(null)
     } catch (err: unknown) {
       setErroFetch(err instanceof Error ? err.message : 'Erro ao aprovar mesa.')
@@ -432,11 +382,11 @@ export default function DashboardEmpresaPage() {
   }
 
   // ── Métricas ──────────────────────────────────────────────
-  const totalSaving   = mesas.reduce((s, m) => s + (m.saving ?? 0), 0)
-  const totalBaseline = mesas.reduce((s, m) => s + (m.baseline ?? 0), 0)
-  const mesasAtivas   = mesas.filter(m => m.status === 'Em Negociação').length
-  const mesasAgAprv   = mesas.filter(m => m.status === 'Aguardando Aprovação').length
-  const mesasConc     = mesas.filter(m => m.status === 'Concluída').length
+  const totalSaving   = mesas.reduce((s, m) => s + (m.savingValue ?? 0), 0)
+  const totalBaseline = mesas.reduce((s, m) => s + (m.targetValue ?? 0), 0)
+  const mesasAtivas   = mesas.filter(m => m.status === 'IN_NEGOTIATION').length
+  const mesasAgAprv   = mesas.filter(m => m.status === 'PENDING_APPROVAL').length
+  const mesasConc     = mesas.filter(m => m.status === 'APPROVED').length
   const taxaMedia     = totalBaseline > 0 ? (totalSaving / totalBaseline * 100) : 0
   const nomeUsuario   = (user?.user_metadata?.nome_completo as string | undefined)?.split(' ')[0] ?? user?.email?.split('@')[0] ?? 'Empresa'
 
@@ -474,7 +424,6 @@ export default function DashboardEmpresaPage() {
 
       <main style={{ maxWidth: 1100, margin: '0 auto', padding: '2rem 1.5rem' }}>
 
-        {/* Título */}
         <div style={{ marginBottom: '2rem' }}>
           <h1 style={{ fontSize: 23, fontWeight: 800, color: NAVY, margin: '0 0 3px' }}>Painel da Empresa</h1>
           <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>
@@ -482,7 +431,6 @@ export default function DashboardEmpresaPage() {
           </p>
         </div>
 
-        {/* Alerta de mesas aguardando aprovação */}
         {mesasAgAprv > 0 && (
           <div style={{
             background: '#FFFBEB', border: '1.5px solid #FCD34D', borderRadius: 10,
@@ -496,7 +444,6 @@ export default function DashboardEmpresaPage() {
           </div>
         )}
 
-        {/* Métricas */}
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
           <MetricCard label="SAVING TOTAL ACUMULADO"  value={brl(totalSaving)}           sub="economia real gerada" accent />
           <MetricCard label="MESAS ATIVAS"            value={String(mesasAtivas)}         sub="em negociação agora" />
@@ -505,18 +452,13 @@ export default function DashboardEmpresaPage() {
           <MetricCard label="TAXA MÉDIA DE SAVING"    value={`${taxaMedia.toFixed(1)}%`} sub="nas negociações" />
         </div>
 
-        {/* Erro */}
         {erroFetch && (
           <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 16px', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 10 }}>
             <span>⚠️</span>
             <p style={{ fontSize: 13, color: '#DC2626', margin: 0, fontWeight: 500 }}>{erroFetch}</p>
-            <button onClick={() => user && buscarMesas(user.id)} style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: '#DC2626', background: 'none', border: '1px solid #FECACA', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>
-              Tentar novamente
-            </button>
           </div>
         )}
 
-        {/* Barra da tabela */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
           <p style={{ fontSize: 14, fontWeight: 700, color: NAVY, margin: 0 }}>
             {mesas.length} mesa{mesas.length !== 1 ? 's' : ''} encontrada{mesas.length !== 1 ? 's' : ''}
@@ -529,11 +471,10 @@ export default function DashboardEmpresaPage() {
           </button>
         </div>
 
-        {/* Tabela */}
         <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px 130px 110px 160px 120px', padding: '10px 16px', background: SLATE, borderBottom: `1px solid ${BORDER}` }}>
-            {['CÓDIGO', 'PRODUTO', 'BASELINE', 'SAVING', 'PRAZO', 'STATUS', 'AÇÃO'].map(c => (
+          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px 130px 160px 120px', padding: '10px 16px', background: SLATE, borderBottom: `1px solid ${BORDER}` }}>
+            {['CÓDIGO', 'PRODUTO', 'BASELINE', 'SAVING', 'STATUS', 'AÇÃO'].map(c => (
               <span key={c} style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: '0.07em' }}>{c}</span>
             ))}
           </div>
@@ -551,26 +492,21 @@ export default function DashboardEmpresaPage() {
 
           {mesas.map((mesa, i) => {
             const sc = statusCfg(mesa.status)
-            const uc = urgenciaCfg(mesa.dias_restantes, mesa.status)
             return (
               <div
                 key={mesa.id}
-                style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px 130px 110px 160px 120px', padding: '14px 16px', borderBottom: i === mesas.length - 1 ? 'none' : `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 0.1s' }}
+                style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px 130px 160px 120px', padding: '14px 16px', borderBottom: i === mesas.length - 1 ? 'none' : `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 0.1s' }}
                 onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFC')}
                 onMouseLeave={e => (e.currentTarget.style.background = WHITE)}
                 onClick={() => setMesaDetalhe(mesa)}
               >
                 <span style={{ fontSize: 11, fontWeight: 700, color: E, fontFamily: 'monospace' }}>#{mesa.id.slice(0, 8).toUpperCase()}</span>
-                <span style={{ fontSize: 13, color: NAVY, fontWeight: 600, paddingRight: 12, lineHeight: 1.35 }}>{mesa.produto}</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{brl(mesa.baseline)}</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: mesa.saving > 0 ? E : MUTED }}>
-                  {mesa.saving > 0 ? brl(mesa.saving) : '—'}
+                <span style={{ fontSize: 13, color: NAVY, fontWeight: 600, paddingRight: 12, lineHeight: 1.35 }}>{mesa.title}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{brl(mesa.targetValue ?? 0)}</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: (mesa.savingValue ?? 0) > 0 ? E : MUTED }}>
+                  {(mesa.savingValue ?? 0) > 0 ? brl(mesa.savingValue) : '—'}
                 </span>
-                <div>
-                  <p style={{ fontSize: 12, color: MUTED, margin: '0 0 3px' }}>{mesa.prazo_total}d total</p>
-                  <Badge text={uc.label} bg={uc.bg} color={uc.color} />
-                </div>
-                <Badge text={mesa.status} bg={sc.bg} color={sc.color} />
+                <Badge text={labelStatus(mesa.status)} bg={sc.bg} color={sc.color} />
                 <button
                   onClick={e => { e.stopPropagation(); setMesaDetalhe(mesa) }}
                   style={{ padding: '7px 12px', background: 'transparent', border: `1.5px solid ${BORDER}`, borderRadius: 7, fontSize: 12, fontWeight: 700, color: NAVY, cursor: 'pointer', whiteSpace: 'nowrap' }}
@@ -584,7 +520,6 @@ export default function DashboardEmpresaPage() {
           })}
         </div>
 
-        {/* Rodapé informativo */}
         {mesas.length > 0 && (
           <div style={{ marginTop: '1.5rem', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 20 }}>💡</span>
