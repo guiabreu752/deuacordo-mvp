@@ -73,7 +73,7 @@ export async function createDeal(data: CreateDealDTO) {
         id: data.createdById,
         email: `user-${data.createdById.slice(0, 8)}@deuacordo.com`,
         name: 'Usuário Empresa',
-        role: Role.CLIENT,
+        role: Role.BUYER,
       },
     })
 
@@ -89,7 +89,7 @@ export async function createDeal(data: CreateDealDTO) {
       create: {
         userId: user.id,
         organizationId: org.id,
-        role: Role.CLIENT,
+        role: Role.BUYER,
       },
     })
 
