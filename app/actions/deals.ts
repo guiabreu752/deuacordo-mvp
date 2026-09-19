@@ -7,8 +7,9 @@ import { revalidatePath } from 'next/cache'
 export interface CreateDealDTO {
   title: string
   description?: string
-  targetValue?: number
-  currentValue?: number
+  quantity?: number      // <--- Novo campo: Quantidade de unidades/itens
+  targetValue?: number   // Valor unitário pago hoje (baseline unitário)
+  currentValue?: number  // Valor unitário negociado
   organizationId: string
   createdById: string
 }
@@ -47,12 +48,16 @@ export async function getAllDeals() {
   }
 }
 
-// 3. Criar uma nova mesa de negociação com garantias de FK (Organization/User)
+// 3. Criar uma nova mesa de negociação com suporte a Quantidade e garantias de FK
 export async function createDeal(data: CreateDealDTO) {
   try {
-    const target = data.targetValue ?? 0
-    const current = data.currentValue ?? 0
-    const saving = target > current ? target - current : 0
+    const qty = data.quantity && data.quantity > 0 ? data.quantity : 1
+    const targetUnit = data.targetValue ?? 0
+    const currentUnit = data.currentValue ?? 0
+
+    const totalBaseline = targetUnit * qty
+    const totalCurrent = currentUnit * qty
+    const totalSaving = totalBaseline > totalCurrent ? totalBaseline - totalCurrent : 0
 
     // 3.1. Garante que a Organização exista no banco Prisma
     const org = await prisma.organization.upsert({
@@ -93,20 +98,22 @@ export async function createDeal(data: CreateDealDTO) {
       },
     })
 
-    // 3.4. Cria o Deal/Mesa no banco
+    // 3.4. Cria o Deal/Mesa no banco considerando quantidade
     const newDeal = await prisma.deal.create({
       data: {
         title: data.title,
         description: data.description,
-        targetValue: target,
-        currentValue: current,
-        savingValue: saving,
+        quantity: qty,
+        targetValue: targetUnit,
+        currentValue: currentUnit,
+        savingValue: totalSaving,
         status: DealStatus.IN_NEGOTIATION,
         organizationId: org.id,
         createdById: user.id,
       },
     })
 
+    revalidatePath('/dashboard')
     revalidatePath('/dashboard/empresa')
     revalidatePath('/dashboard/closer')
     return { success: true, data: newDeal }
@@ -119,33 +126,38 @@ export async function createDeal(data: CreateDealDTO) {
   }
 }
 
-// 4. Submeter proposta pelo Closer com validação de Saving Mínimo (3%)
-export async function submeterProposta(dealId: string, proposedValue: number) {
+// 4. Submeter proposta pelo Closer considerando a Quantidade e a regra de 3% de Saving
+export async function submeterProposta(dealId: string, proposedUnitPrice: number) {
   try {
     const currentDeal = await prisma.deal.findUnique({ where: { id: dealId } })
     if (!currentDeal) throw new Error('Mesa não encontrada.')
 
-    const target = currentDeal.targetValue ?? 0
-    if (proposedValue >= target) {
-      return { success: false, error: 'O valor negociado deve ser menor que o valor atual pago.' }
+    const qty = currentDeal.quantity || 1
+    const targetUnit = currentDeal.targetValue ?? 0
+
+    if (proposedUnitPrice >= targetUnit) {
+      return { success: false, error: 'O valor unitário negociado deve ser menor que o valor pago atualmente.' }
     }
 
-    const saving = target - proposedValue
-    const percentualSaving = (saving / target) * 100
+    const totalTarget = targetUnit * qty
+    const totalProposed = proposedUnitPrice * qty
+    const totalSaving = totalTarget - totalProposed
+    const percentualSaving = (totalSaving / totalTarget) * 100
 
     if (percentualSaving < 3) {
-      return { success: false, error: 'O saving mínimo para acionar a mesa é de 3%.' }
+      return { success: false, error: `O saving de ${percentualSaving.toFixed(1)}% é inferior ao mínimo de 3% necessário para a mesa.` }
     }
 
     const updated = await prisma.deal.update({
       where: { id: dealId },
       data: {
-        currentValue: proposedValue,
-        savingValue: saving,
+        currentValue: proposedUnitPrice,
+        savingValue: totalSaving,
         status: DealStatus.PENDING_APPROVAL,
       },
     })
 
+    revalidatePath('/dashboard')
     revalidatePath('/dashboard/empresa')
     revalidatePath('/dashboard/closer')
     return { success: true, data: updated }
@@ -163,6 +175,7 @@ export async function aprovarSaving(dealId: string) {
       data: { status: DealStatus.APPROVED },
     })
 
+    revalidatePath('/dashboard')
     revalidatePath('/dashboard/empresa')
     revalidatePath('/dashboard/closer')
     return { success: true, data: updated }
@@ -180,6 +193,7 @@ export async function rejeitarMesa(dealId: string) {
       data: { status: DealStatus.REJECTED },
     })
 
+    revalidatePath('/dashboard')
     revalidatePath('/dashboard/empresa')
     revalidatePath('/dashboard/closer')
     return { success: true, data: updated }

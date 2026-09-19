@@ -78,22 +78,23 @@ model UsersOnOrganizations {
 // --------------------------------------
 
 model Deal {
-  id             String     @id @default(cuid())
-  title          String
-  description    String?
-  targetValue    Float?
-  currentValue   Float?
-  savingValue    Float?
-  status         DealStatus @default(DRAFT)
-  
+  id           String     @id @default(cuid())
+  title        String
+  description  String?
+  quantity     Int        @default(1)
+  targetValue  Float?
+  currentValue Float?
+  savingValue  Float?
+  status       DealStatus @default(DRAFT)
+
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  createdById    String
-  createdBy      User         @relation("CreatedDeals", fields: [createdById], references: [id])
+  createdById String
+  createdBy   User   @relation("CreatedDeals", fields: [createdById], references: [id])
 
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("deals")
 }
