@@ -2,18 +2,6 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import {
-  BookOpen,
-  GraduationCap,
-  ExternalLink,
-  ChevronDown,
-  Sparkles,
-  PackageCheck,
-  Laptop,
-  Briefcase,
-  Search,
-  ShoppingCart
-} from 'lucide-react';
 
 // ── Lista de Produtos Afiliados (Livros, Cursos e Insumos) ─────
 interface AffiliateProduct {
@@ -39,7 +27,8 @@ const affiliateProducts: AffiliateProduct[] = [
     priceEstimate: 'R$ 49,90',
     rating: '4.9 ★',
     imageUrl: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=400',
-    affiliateUrl: 'https://amazon.com.br?tag=seu_id_afiliado',
+    // 👇 Seu link oficial de afiliado da Amazon ativo:
+    affiliateUrl: 'https://www.amazon.com.br/Como-chegar-sim-negociar-concess%C3%B5es/dp/8543106214?dib=eyJ2IjoiMSJ9.twB_zW1zFsedCjtOSFv6Bu6ij-EzTh8JIkAQBqdnWrgCqivUO5B3ES76V3iB-EGxTV3iOKMBiTSLrG6Us2MCwnQAXkdaXOROGTVlGj4eDGgKUJzD0SlWgHi9dI-tXrZ9hjtsTtxfoYtfKi_67f8SHD64Dr_uBJVgJD54WWV3A89Li2uH3TuiNN7Mdf3rSG0gJYrzrA1ByL_38qfpb1cuVgFAIkjXHbu8SpkDxIIEXToaLK3q5_mRNS4N3oiwxcQn128LFccGANXVYjcn3KgvZxksknNycM5dmeQnF02iDqc.IvSFAlslqMoOsVQkp7xiZqytFiUJABcF8HdzZ7lel8c&dib_tag=se&keywords=como+chegar+ao+sim&qid=1789860098&sr=8-1&ufe=app_do%3Aamzn1.fos.2fb4d624-b7be-441e-af6d-3c953cfae5bf&linkCode=ll2&tag=deuacordo-20&linkId=520f0e5969f967ce2ee75afa74b6cfc0&ref_=as_li_ss_tl',
     badge: 'Mais Vendido',
   },
   {
@@ -52,7 +41,7 @@ const affiliateProducts: AffiliateProduct[] = [
     rating: '5.0 ★',
     imageUrl: 'https://images.unsplash.com/photo-1589829085413-56de8ae18c73?auto=format&fit=crop&q=80&w=400',
     badge: 'Recomendado',
-    affiliateUrl: 'https://amazon.com.br?tag=seu_id_afiliado',
+    affiliateUrl: 'https://amazon.com.br?tag=deuacordo-20',
   },
   {
     id: '3',
@@ -74,7 +63,7 @@ const affiliateProducts: AffiliateProduct[] = [
     priceEstimate: 'R$ 219,00',
     rating: '4.7 ★',
     imageUrl: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?auto=format&fit=crop&q=80&w=400',
-    affiliateUrl: 'https://amazon.com.br?tag=seu_id_afiliado',
+    affiliateUrl: 'https://amazon.com.br?tag=deuacordo-20',
   },
   {
     id: '5',
@@ -129,16 +118,15 @@ export default function DeuAcordoAcademyPage() {
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                   className="flex items-center gap-1.5 text-sm font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors"
                 >
-                  <ShoppingCart className="w-4 h-4 text-emerald-600" />
-                  <span>Produtos Indicados</span>
-                  <ChevronDown className={`w-4 h-4 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                  <span>📦 Produtos Indicados</span>
+                  <span className={`text-xs transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`}>▼</span>
                 </button>
 
                 {/* Caixa Fluente do Dropdown */}
                 {isDropdownOpen && (
-                  <div className="absolute left-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="absolute left-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 p-3 z-50">
                     <div className="p-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors flex items-start gap-3" onClick={() => { setSelectedCategory('todos'); setIsDropdownOpen(false); }}>
-                      <PackageCheck className="w-5 h-5 text-emerald-500 mt-0.5" />
+                      <span className="text-xl">📦</span>
                       <div>
                         <p className="font-bold text-sm text-slate-900">Categorias em Destaque</p>
                         <p className="text-xs text-slate-500">Insumos, licenças de software, livros e cursos B2B.</p>
@@ -152,7 +140,7 @@ export default function DeuAcordoAcademyPage() {
             {/* Barra de Busca Rapidinha */}
             <div className="flex-1 max-w-md mx-4 hidden md:block">
               <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
                 <input
                   type="text"
                   placeholder="Buscar livros, cursos, suprimentos..."
@@ -180,7 +168,7 @@ export default function DeuAcordoAcademyPage() {
       <section className="bg-slate-900 text-white py-12 px-4 sm:px-6 lg:px-8 border-b border-slate-800">
         <div className="max-w-5xl mx-auto text-center">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-bold border border-emerald-500/20 mb-4">
-            <Sparkles className="w-3.5 h-3.5" /> Curadoria DeuAcordo Academy
+            ✨ Curadoria DeuAcordo Academy
           </span>
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white mb-3">
             Ferramentas, Livros e Cursos para Compradores e Negociadores
@@ -197,13 +185,12 @@ export default function DeuAcordoAcademyPage() {
         {/* Filtros por Categoria */}
         <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 custom-scrollbar">
           {[
-            { id: 'todos', label: 'Todos os Indicados', icon: PackageCheck },
-            { id: 'livros', label: 'Livros de Negociação', icon: BookOpen },
-            { id: 'cursos', label: 'Cursos & Treinamentos', icon: GraduationCap },
-            { id: 'escritorio', label: 'Insumos de Escritório', icon: Briefcase },
-            { id: 'software', label: 'Licenças de Software', icon: Laptop },
+            { id: 'todos', label: 'Todos os Indicados', icon: '📦' },
+            { id: 'livros', label: 'Livros de Negociação', icon: '📚' },
+            { id: 'cursos', label: 'Cursos & Treinamentos', icon: '🎓' },
+            { id: 'escritorio', label: 'Insumos de Escritório', icon: '💼' },
+            { id: 'software', label: 'Licenças de Software', icon: '💻' },
           ].map((cat) => {
-            const Icon = cat.icon;
             const isActive = selectedCategory === cat.id;
             return (
               <button
@@ -215,7 +202,7 @@ export default function DeuAcordoAcademyPage() {
                     : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                 }`}
               >
-                <Icon className="w-4 h-4" />
+                <span>{cat.icon}</span>
                 {cat.label}
               </button>
             );
@@ -275,7 +262,7 @@ export default function DeuAcordoAcademyPage() {
                   className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors"
                 >
                   <span>Ver Oferta</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>↗</span>
                 </a>
               </div>
             </div>
@@ -284,7 +271,7 @@ export default function DeuAcordoAcademyPage() {
 
         {filteredProducts.length === 0 && (
           <div className="text-center py-16 bg-white rounded-2xl border border-slate-200">
-            <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+            <p className="text-3xl mb-2">📚</p>
             <p className="text-slate-700 font-bold">Nenhum produto encontrado</p>
             <p className="text-xs text-slate-400 mt-1">Tente trocar a categoria ou buscar por outro termo.</p>
           </div>
