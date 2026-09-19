@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
-import { getDealsByOrganization, createDeal, updateDealStatus } from '@/app/actions/deals'
-import { DealStatus } from '@prisma/client'
+import { getDealsByOrganization, createDeal, aprovarSaving, rejeitarMesa } from '@/app/actions/deals'
 
 // ── Paleta ────────────────────────────────────────────────────
 const NAVY   = '#0F172A'
@@ -103,7 +102,7 @@ function ModalNovaMesa({ onClose, onSalvar, salvando }: {
   onSalvar: (f: FormNovaMesa) => Promise<void>
   salvando: boolean
 }) {
-  const [form, setForm]       = useState<FormNovaMesa>({ produto: '', baseline: '', preco_alvo: '', prazo: '15' })
+  const [form, setForm]           = useState<FormNovaMesa>({ produto: '', baseline: '', preco_alvo: '', prazo: '15' })
   const [erroLocal, setErroLocal] = useState('')
   const set = (k: keyof FormNovaMesa) => (v: string) => setForm(p => ({ ...p, [k]: v }))
 
@@ -154,8 +153,6 @@ function ModalNovaMesa({ onClose, onSalvar, salvando }: {
               value={form[key]} placeholder={placeholder}
               onChange={e => set(key)(e.target.value)}
               style={inputStyle}
-              onFocus={e => { e.target.style.borderColor = E; e.target.style.boxShadow = `0 0 0 3px ${E}25` }}
-              onBlur={e => { e.target.style.borderColor = BORDER; e.target.style.boxShadow = 'none' }}
             />
           </div>
         ))}
@@ -205,10 +202,10 @@ function ModalDetalhes({ mesa, onClose, onAprovar, aprovando }: {
   onAprovar: (id: string) => Promise<void>
   aprovando: boolean
 }) {
-  const sc  = statusCfg(mesa.status)
-  const fee = calcFee(mesa.savingValue ?? 0)
-  const target = mesa.targetValue ?? 0
-  const saving = mesa.savingValue ?? 0
+  const sc        = statusCfg(mesa.status)
+  const fee       = calcFee(mesa.savingValue ?? 0)
+  const target    = mesa.targetValue ?? 0
+  const saving    = mesa.savingValue ?? 0
   const pctSaving = target > 0 ? ((saving / target) * 100).toFixed(1) : '0'
 
   return (
@@ -233,9 +230,9 @@ function ModalDetalhes({ mesa, onClose, onAprovar, aprovando }: {
 
           <div style={{ background: SLATE, borderRadius: 10, padding: '1.25rem', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
             {[
-              { label: 'BASELINE',      value: brl(target), color: NAVY },
+              { label: 'BASELINE',      value: brl(target),                                        color: NAVY },
               { label: 'SAVING GERADO', value: saving > 0 ? `${brl(saving)} (${pctSaving}%)` : '—', color: E },
-              { label: 'FEE (20%)',     value: saving > 0 ? brl(fee) : '—', color: NAVY },
+              { label: 'FEE (20%)',     value: saving > 0 ? brl(fee) : '—',                        color: NAVY },
             ].map(({ label, value, color }) => (
               <div key={label}>
                 <p style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: '0.06em', margin: '0 0 4px' }}>{label}</p>
@@ -365,10 +362,10 @@ export default function DashboardEmpresaPage() {
     }
   }
 
-  async function aprovarMesa(mesaId: string) {
+  async function handleAprovarMesa(mesaId: string) {
     setAprovando(true)
     try {
-      const res = await updateDealStatus(mesaId, DealStatus.APPROVED)
+      const res = await aprovarSaving(mesaId)
       if (!res.success) throw new Error(res.error)
 
       const orgId = user?.user_metadata?.organizationId || 'default-org-id'
@@ -537,7 +534,7 @@ export default function DashboardEmpresaPage() {
         <ModalDetalhes
           mesa={mesaDetalhe}
           onClose={() => setMesaDetalhe(null)}
-          onAprovar={aprovarMesa}
+          onAprovar={handleAprovarMesa}
           aprovando={aprovando}
         />
       )}
