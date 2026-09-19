@@ -18,14 +18,9 @@ const AMBER  = '#F59E0B'
 type Tab  = 'entrar' | 'criar'
 type Role = 'empresa' | 'closer'
 
-// ── Redirect inteligente pelo role do usuário ─────────────────
-function redirectByRole(role: string | undefined, router: ReturnType<typeof useRouter>) {
-  if (role === 'closer') {
-    router.replace('/dashboard/closer')
-  } else {
-    // 'empresa' ou qualquer valor desconhecido → dashboard empresa (default seguro)
-    router.replace('/dashboard/empresa')
-  }
+// ── Redirect Unificado para o Hub Central ──────────────────────
+function redirectToHub(router: ReturnType<typeof useRouter>) {
+  router.replace('/dashboard')
 }
 
 // ── Mensagens de erro traduzidas ──────────────────────────────
@@ -123,7 +118,7 @@ function SeletorPerfil({ role, onChange }: { role: Role; onChange: (r: Role) => 
   return (
     <div style={{ marginBottom: '1.25rem' }}>
       <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        Meu perfil *
+        Meu perfil principal *
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         {opcoes.map(op => {
@@ -161,18 +156,17 @@ export default function LoginPage() {
   const [email, setEmail]     = useState('')
   const [senha, setSenha]     = useState('')
   const [nome, setNome]       = useState('')
-  const [role, setRole]       = useState<Role>('empresa')  // perfil selecionado no sign up
+  const [role, setRole]       = useState<Role>('empresa')
   const [erro, setErro]       = useState('')
   const [sucesso, setSucesso] = useState('')
   const [loading, setLoading] = useState(false)
   const [checando, setChecando] = useState(true)
 
-  // Se já está logado, redireciona para o dashboard correto
+  // Se já está logado, redireciona para o Hub Central
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
-        const userRole = data.session.user.user_metadata?.role as string | undefined
-        redirectByRole(userRole, router)
+        redirectToHub(router)
       } else {
         setChecando(false)
       }
@@ -181,21 +175,20 @@ export default function LoginPage() {
 
   function limpar() { setErro(''); setSucesso('') }
 
-  // ── Login com redirect inteligente ────────────────────────
+  // ── Login unificado com redirect para o Hub ────────────────
   async function entrar(e: React.FormEvent) {
     e.preventDefault(); limpar()
     if (!email || !senha) { setErro('Preencha e-mail e senha.'); return }
     setLoading(true)
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password: senha,
       })
       if (error) throw error
 
-      // Lê o role dos metadados e redireciona
-      const userRole = data.user?.user_metadata?.role as string | undefined
-      redirectByRole(userRole, router)
+      // Redireciona para o Hub Central Unificado
+      redirectToHub(router)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro desconhecido.'
       setErro(traduzirErro(msg))
@@ -204,7 +197,7 @@ export default function LoginPage() {
     }
   }
 
-  // ── Cadastro com role embutido nos metadados ───────────────
+  // ── Cadastro com perfil padrão e redirect para o Hub ────────
   async function criar(e: React.FormEvent) {
     e.preventDefault(); limpar()
     if (!nome.trim())     { setErro('Informe seu nome.'); return }
@@ -218,16 +211,12 @@ export default function LoginPage() {
         options: {
           data: {
             nome_completo: nome.trim(),
-            role,            // ← 'empresa' | 'closer' — persiste em user_metadata
+            role,
           },
         },
       })
       if (error) throw error
-      setSucesso(
-        role === 'empresa'
-          ? 'Conta de empresa criada! Confirme seu e-mail e faça login para acessar o painel.'
-          : 'Conta de Closer criada! Confirme seu e-mail e faça login para começar a negociar.'
-      )
+      setSucesso('Conta criada com sucesso! Confirme seu e-mail e faça login para acessar o Hub.')
       setTab('entrar')
       setSenha('')
     } catch (err: unknown) {
@@ -238,7 +227,6 @@ export default function LoginPage() {
     }
   }
 
-  // Spinner durante verificação de sessão
   if (checando) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: SLATE }}>
       <div style={{ textAlign: 'center' }}>
@@ -280,7 +268,6 @@ export default function LoginPage() {
             <span style={{ color: E, fontStyle: 'italic' }}>resultado garantido</span>.
           </h1>
 
-          {/* Dois perfis no branding */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
             {[
               { emoji: '🏢', titulo: 'Para empresas', desc: 'Cadastre demandas e pague só 20% do saving real gerado.' },
@@ -342,7 +329,7 @@ export default function LoginPage() {
               <>
                 <h2 style={{ fontSize: 22, fontWeight: 800, color: NAVY, margin: '0 0 0.25rem' }}>Bem-vindo de volta.</h2>
                 <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1.75rem' }}>
-                  Você será redirecionado para o painel do seu perfil automaticamente.
+                  Acesse a plataforma e navegue livremente pelos módulos de Empresa e Closer.
                 </p>
 
                 <form onSubmit={entrar} noValidate>
@@ -361,7 +348,7 @@ export default function LoginPage() {
                     fontSize: 15, fontWeight: 700, cursor: loading ? 'wait' : 'pointer',
                     transition: 'background 0.15s',
                   }}>
-                    {loading ? 'Entrando...' : 'Entrar no Painel →'}
+                    {loading ? 'Entrando...' : 'Entrar no Hub →'}
                   </button>
                 </form>
 
@@ -384,7 +371,6 @@ export default function LoginPage() {
                 <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1.5rem' }}>Gratuito. Sem cartão de crédito.</p>
 
                 <form onSubmit={criar} noValidate>
-                  {/* Seletor de perfil — destaque principal */}
                   <SeletorPerfil role={role} onChange={setRole} />
 
                   <Campo label="Seu nome" id="criar-nome" value={nome}
@@ -394,7 +380,6 @@ export default function LoginPage() {
                   <Campo label="Senha (mínimo 6 caracteres)" id="criar-senha" type="password" value={senha}
                     onChange={setSenha} placeholder="••••••••" autoComplete="new-password" />
 
-                  {/* Indicador de força da senha */}
                   <div style={{ marginBottom: '1rem' }}>
                     {[
                       { ok: senha.length >= 6, label: 'Pelo menos 6 caracteres' },

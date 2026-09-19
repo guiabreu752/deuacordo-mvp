@@ -6,8 +6,9 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 import { getAllDeals, submeterProposta } from '@/app/actions/deals'
+import { activateCloserProfileOnDemand } from '@/app/actions/user'
 
-// ── Paleta ────────────────────────────────────────────────────
+// ── Paleta Executiva DeuAcordo ──────────────────────────────
 const NAVY   = '#0F172A'
 const E      = '#10B981'
 const MUTED  = '#64748B'
@@ -17,7 +18,7 @@ const WHITE  = '#FFFFFF'
 const AMBER  = '#F59E0B'
 const RED    = '#EF4444'
 
-// ── Helpers ───────────────────────────────────────────────────
+// ── Helpers de Formatação e Regras do Fee ────────────────────
 const brl = (n: number) =>
   n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -64,9 +65,10 @@ function MetricCard({ label, value, sub, accent = false, accentColor = E }: {
     <div style={{
       background: WHITE,
       border: `1.5px solid ${accent ? accentColor : BORDER}`,
-      borderRadius: 12, padding: '1.25rem 1.5rem', flex: 1, minWidth: 150,
+      borderRadius: 12, padding: '1.25rem 1.5rem', flex: 1, minWidth: 160,
+      boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
     }}>
-      <p style={{ fontSize: 11, fontWeight: 700, color: accent ? accentColor : MUTED, letterSpacing: '0.07em', margin: '0 0 6px' }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: accent ? accentColor : MUTED, letterSpacing: '0.07em', margin: '0 0 6px', textTransform: 'uppercase' }}>
         {label}
       </p>
       <p style={{ fontSize: 26, fontWeight: 800, color: accent ? accentColor : NAVY, margin: '0 0 3px', letterSpacing: '-0.02em' }}>
@@ -82,47 +84,51 @@ function Spinner() {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: SLATE }}>
       <div style={{ textAlign: 'center' }}>
         <div style={{
-          width: 36, height: 36, border: `3px solid ${BORDER}`, borderTopColor: AMBER,
+          width: 38, height: 38, border: `3px solid ${BORDER}`, borderTopColor: AMBER,
           borderRadius: '50%', margin: '0 auto 12px', animation: 'spin 0.8s linear infinite',
         }} />
-        <p style={{ fontSize: 13, color: MUTED }}>Carregando cockpit...</p>
+        <p style={{ fontSize: 13, color: MUTED, fontWeight: 600 }}>Carregando Cockpit do Closer...</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
       </div>
     </div>
   )
 }
 
-// ── Modal Enviar Proposta ──────────────────────────────────────
+// ── Modal Enviar Proposta com cálculo de quantidade ─────────
 function ModalProposta({ mesa, onClose, onEnviar, enviando }: {
   mesa: any
   onClose: () => void
-  onEnviar: (mesaId: string, dados: { preco: number; fornecedor: string }) => Promise<void>
+  onEnviar: (mesaId: string, dados: { precoUnitario: number; fornecedor: string }) => Promise<void>
   enviando: boolean
 }) {
-  const [preco, setPreco]         = useState('')
+  const [preco, setPreco]           = useState('')
   const [fornecedor, setFornecedor] = useState('')
-  const [erroLocal, setErroLocal] = useState('')
+  const [erroLocal, setErroLocal]   = useState('')
 
-  const target = mesa.targetValue ?? 0
+  const qty = mesa.quantity || 1
+  const targetUnit = mesa.targetValue ?? 0
+  const targetTotal = targetUnit * qty
 
   const preview = (() => {
-    const p = parseFloat(preco.replace(',', '.'))
-    if (!p || p >= target) return null
-    const saving    = target - p
-    const fee       = calcFee(saving)
-    const comissao  = calcComissao(saving)
-    const pct       = ((saving / target) * 100).toFixed(1)
-    return { saving, fee, comissao, pct, valido: (saving / target) >= 0.03 }
+    const pUnit = parseFloat(preco.replace(',', '.'))
+    if (!pUnit || pUnit >= targetUnit) return null
+
+    const savingTotal = (targetUnit - pUnit) * qty
+    const fee = calcFee(savingTotal)
+    const comissao = calcComissao(savingTotal)
+    const pct = (((targetUnit - pUnit) / targetUnit) * 100).toFixed(1)
+
+    return { savingTotal, fee, comissao, pct, valido: (savingTotal / targetTotal) >= 0.03 }
   })()
 
   async function submit() {
-    const p = parseFloat(preco.replace(',', '.'))
-    if (!p || p <= 0)       { setErroLocal('Informe o preço negociado.'); return }
-    if (p >= target)        { setErroLocal('O preço deve ser menor que o baseline.'); return }
-    if (!fornecedor.trim()) { setErroLocal('Informe o nome do fornecedor.'); return }
-    if (preview && !preview.valido) { setErroLocal('O saving mínimo para acionar o fee é 3%. Negocie um preço menor.'); return }
+    const pUnit = parseFloat(preco.replace(',', '.'))
+    if (!pUnit || pUnit <= 0) { setErroLocal('Informe o preço unitário negociado.'); return }
+    if (pUnit >= targetUnit)  { setErroLocal('O preço unitário deve ser menor que o pago atualmente.'); return }
+    if (preview && !preview.valido) { setErroLocal('O saving mínimo exigido para acionar a mesa é de 3%. Negocie um preço menor.'); return }
+    
     setErroLocal('')
-    await onEnviar(mesa.id, { preco: p, fornecedor: fornecedor.trim() })
+    await onEnviar(mesa.id, { precoUnitario: pUnit, fornecedor: fornecedor.trim() })
   }
 
   const inputStyle = {
@@ -136,38 +142,41 @@ function ModalProposta({ mesa, onClose, onEnviar, enviando }: {
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 500, padding: '2rem', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
+      <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 520, padding: '2rem', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
           <div>
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: '0 0 4px' }}>Enviar Proposta</h2>
-            <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>{mesa.title}</p>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: '0 0 4px' }}>Enviar Proposta Comercial</h2>
+            <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>Item: {mesa.title} ({qty} un)</p>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: MUTED, padding: 0 }}>✕</button>
         </div>
 
         <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '0.85rem 1rem', marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 12, color: '#991B1B', fontWeight: 700 }}>BASELINE DO CLIENTE</span>
-          <span style={{ fontSize: 18, fontWeight: 800, color: RED }}>{brl(target)}</span>
+          <div>
+            <span style={{ fontSize: 10, color: '#991B1B', fontWeight: 700, display: 'block', textTransform: 'uppercase' }}>Baseline do Cliente ({qty} un)</span>
+            <span style={{ fontSize: 12, color: '#991B1B' }}>R$ {targetUnit.toFixed(2)} / un</span>
+          </div>
+          <span style={{ fontSize: 18, fontWeight: 800, color: RED }}>{brl(targetTotal)}</span>
         </div>
 
         <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Preço negociado com o fornecedor (R$) *
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Preço UNITÁRIO negociado com o fornecedor (R$) *
           </label>
           <input
-            value={preco} placeholder="Ex: 38500"
+            value={preco} placeholder={`Menor que R$ ${targetUnit.toFixed(2)}`}
             onChange={e => setPreco(e.target.value)}
             style={inputStyle}
           />
         </div>
 
         <div style={{ marginBottom: '1.25rem' }}>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Nome do fornecedor alternativo *
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Fornecedor Parceiro Alternativo
           </label>
           <input
-            value={fornecedor} placeholder="Ex: Fornecedora Sul Embalagens Ltda"
+            value={fornecedor} placeholder="Ex: Distribuidora Sul Embalagens Ltda"
             onChange={e => setFornecedor(e.target.value)}
             style={inputStyle}
           />
@@ -180,17 +189,17 @@ function ModalProposta({ mesa, onClose, onEnviar, enviando }: {
             borderRadius: 10, padding: '1rem', marginBottom: '1.25rem',
           }}>
             <p style={{ fontSize: 11, fontWeight: 700, color: preview.valido ? '#92400E' : '#991B1B', letterSpacing: '0.07em', margin: '0 0 8px' }}>
-              {preview.valido ? 'SUA COMISSÃO ESTIMADA' : '⚠️ SAVING ABAIXO DO MÍNIMO (3%)'}
+              {preview.valido ? 'SUA COMISSÃO ESTIMADA (70%)' : '⚠️ SAVING ABAIXO DO MÍNIMO (3%)'}
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
               {[
-                { label: 'Saving',          value: `${brl(preview.saving)} (${preview.pct}%)`, color: E },
-                { label: 'Fee (20%)',       value: brl(preview.fee),                           color: NAVY },
-                { label: 'Sua comissão (70%)', value: brl(preview.comissao),                   color: AMBER },
+                { label: 'Saving Total',       value: `${brl(preview.savingTotal)} (${preview.pct}%)`, color: E },
+                { label: 'Fee Plataforma',     value: brl(preview.fee),                                color: NAVY },
+                { label: 'Sua Comissão',       value: brl(preview.comissao),                           color: AMBER },
               ].map(({ label, value, color }) => (
                 <div key={label}>
                   <p style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: '0.06em', margin: '0 0 3px' }}>{label}</p>
-                  <p style={{ fontSize: 14, fontWeight: 800, color, margin: 0 }}>{value}</p>
+                  <p style={{ fontSize: 13, fontWeight: 800, color, margin: 0 }}>{value}</p>
                 </div>
               ))}
             </div>
@@ -222,17 +231,19 @@ function ModalProposta({ mesa, onClose, onEnviar, enviando }: {
   )
 }
 
-// ── Modal Detalhes (visão closer) ─────────────────────────────
+// ── Modal Detalhes (Visão Closer) ─────────────────────────────
 function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
   mesa: any
   onClose: () => void
   onEnviarProposta: (mesa: any) => void
 }) {
   const sc         = statusCfg(mesa.status)
+  const qty        = mesa.quantity || 1
   const saving     = mesa.savingValue ?? 0
-  const target     = mesa.targetValue ?? 0
+  const targetUnit = mesa.targetValue ?? 0
+  const targetTotal = targetUnit * qty
   const comissao   = calcComissao(saving)
-  const pctSaving  = target > 0 ? ((saving / target) * 100).toFixed(1) : '0'
+  const pctSaving  = targetTotal > 0 ? ((saving / targetTotal) * 100).toFixed(1) : '0'
   const podeEnviar = mesa.status === 'IN_NEGOTIATION'
 
   return (
@@ -240,7 +251,7 @@ function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
+      <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 580, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
 
         <div style={{ padding: '1.5rem 2rem', borderBottom: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
@@ -257,13 +268,13 @@ function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
 
           <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '1.25rem', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
             {[
-              { label: 'BASELINE',            value: brl(target),                                            color: NAVY  },
-              { label: 'SAVING GERADO',       value: saving > 0 ? `${brl(saving)} (${pctSaving}%)` : '—',     color: E },
-              { label: 'SUA COMISSÃO (70%)',  value: saving > 0 ? brl(comissao) : '—',                       color: AMBER },
+              { label: `BASELINE (${qty} UN)`, value: brl(targetTotal), color: NAVY },
+              { label: 'SAVING GERADO', value: saving > 0 ? `${brl(saving)} (${pctSaving}%)` : '—', color: E },
+              { label: 'SUA COMISSÃO (70%)', value: saving > 0 ? brl(comissao) : '—', color: AMBER },
             ].map(({ label, value, color }) => (
               <div key={label}>
                 <p style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: '0.06em', margin: '0 0 4px' }}>{label}</p>
-                <p style={{ fontSize: 17, fontWeight: 800, color, margin: 0 }}>{value}</p>
+                <p style={{ fontSize: 16, fontWeight: 800, color, margin: 0 }}>{value}</p>
               </div>
             ))}
           </div>
@@ -271,7 +282,8 @@ function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
           <div style={{ background: SLATE, borderRadius: 10, padding: '1rem' }}>
             {[
               { label: 'Aberta em', value: new Date(mesa.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }) },
-              { label: 'Empresa',   value: mesa.organization?.name || 'Cliente B2B' },
+              { label: 'Quantidade solicitada', value: `${qty} unidades` },
+              { label: 'Empresa', value: mesa.organization?.name || 'Cliente B2B' },
             ].map(({ label, value }) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: `1px solid ${BORDER}`, fontSize: 13 }}>
                 <span style={{ color: MUTED }}>{label}</span>
@@ -296,7 +308,7 @@ function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
           {mesa.status === 'PENDING_APPROVAL' && (
             <div style={{ background: '#FEF9C3', border: '1px solid #FCD34D', borderRadius: 8, padding: '0.9rem', textAlign: 'center' }}>
               <p style={{ fontSize: 13, color: '#92400E', margin: 0, fontWeight: 600 }}>
-                ⏳ Proposta enviada — aguardando aprovação do cliente para liberar sua comissão.
+                ⏳ Proposta enviada — aguardando aprovação do cliente para liberar sua comissão de {brl(comissao)}.
               </p>
             </div>
           )}
@@ -314,7 +326,7 @@ function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
   )
 }
 
-// ── Dashboard Closer ──────────────────────────────────────────
+// ── Dashboard Principal do Closer ──────────────────────────────
 export default function DashboardCloserPage() {
   const router = useRouter()
   const [user, setUser]                 = useState<User | null>(null)
@@ -333,7 +345,7 @@ export default function DashboardCloserPage() {
     if (res.success && res.data) {
       setMesas(res.data)
     } else {
-      setErroFetch(res.error || 'Erro ao carregar mesas.')
+      setErroFetch(res.error || 'Erro ao carregar mesas de negociação.')
     }
   }, [])
 
@@ -344,11 +356,8 @@ export default function DashboardCloserPage() {
       if (!mounted) return
       if (!u) { router.replace('/login'); return }
 
-      const role = u.user_metadata?.role as string | undefined
-      if (role === 'empresa') {
-        router.replace('/dashboard/empresa')
-        return
-      }
+      // Ativa o perfil de closer no Prisma caso ainda não esteja
+      await activateCloserProfileOnDemand(u.id)
 
       setUser(u)
       await buscarMesas()
@@ -368,11 +377,11 @@ export default function DashboardCloserPage() {
     router.replace('/login')
   }
 
-  async function enviarProposta(mesaId: string, dados: { preco: number; fornecedor: string }) {
+  async function enviarProposta(mesaId: string, dados: { precoUnitario: number; fornecedor: string }) {
     if (!user) return
     setEnviando(true)
     try {
-      const res = await submeterProposta(mesaId, dados.preco)
+      const res = await submeterProposta(mesaId, dados.precoUnitario)
       if (!res.success) throw new Error(res.error)
 
       await buscarMesas()
@@ -384,12 +393,12 @@ export default function DashboardCloserPage() {
     }
   }
 
-  const totalComissoes   = mesas.reduce((s, m) => s + calcComissao(m.savingValue ?? 0), 0)
+  const totalComissoes     = mesas.reduce((s, m) => s + calcComissao(m.savingValue ?? 0), 0)
   const comissoesLiberadas = mesas.filter(m => m.status === 'APPROVED').reduce((s, m) => s + calcComissao(m.savingValue ?? 0), 0)
-  const mesasAtivas      = mesas.filter(m => m.status === 'IN_NEGOTIATION').length
-  const mesasPendentes   = mesas.filter(m => m.status === 'PENDING_APPROVAL').length
-  const mesasConc        = mesas.filter(m => m.status === 'APPROVED').length
-  const taxaFechamento   = mesas.length > 0 ? ((mesasConc / mesas.length) * 100).toFixed(0) : '0'
+  const mesasAtivas        = mesas.filter(m => m.status === 'IN_NEGOTIATION').length
+  const mesasPendentes     = mesas.filter(m => m.status === 'PENDING_APPROVAL').length
+  const mesasConc          = mesas.filter(m => m.status === 'APPROVED').length
+  const taxaFechamento     = mesas.length > 0 ? ((mesasConc / mesas.length) * 100).toFixed(0) : '0'
 
   const nomeUsuario = (user?.user_metadata?.nome_completo as string | undefined)?.split(' ')[0] ?? user?.email?.split('@')[0] ?? 'Closer'
 
@@ -402,8 +411,9 @@ export default function DashboardCloserPage() {
   return (
     <div style={{ minHeight: '100vh', background: SLATE, fontFamily: 'Inter, system-ui, sans-serif' }}>
 
+      {/* Header Unificado com Link para o Hub */}
       <header style={{ background: WHITE, borderBottom: `1px solid ${BORDER}`, padding: '0.9rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+        <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
           <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 34, width: 'auto', objectFit: 'contain' }} />
           <span style={{ fontWeight: 800, fontSize: 17, color: NAVY, letterSpacing: '-0.02em' }}>
             DeuAcordo<span style={{ color: E }}>.com</span>
@@ -412,7 +422,7 @@ export default function DashboardCloserPage() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ background: '#FFFBEB', color: '#92400E', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, border: '1px solid #FCD34D' }}>
-            🎯 Closer
+            🎯 Cockpit do Closer
           </div>
           <div style={{ textAlign: 'right', marginLeft: 8 }}>
             <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, margin: 0 }}>{nomeUsuario}</p>
@@ -428,14 +438,21 @@ export default function DashboardCloserPage() {
         </div>
       </header>
 
-      <main style={{ maxWidth: 1100, margin: '0 auto', padding: '2rem 1.5rem' }}>
+      {/* Voltar para o Hub */}
+      <div style={{ maxWidth: 1100, margin: '0.75rem auto 0', padding: '0 1.5rem' }}>
+        <Link href="/dashboard" style={{ fontSize: 13, color: MUTED, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+          ← Voltar para o Dashboard Hub
+        </Link>
+      </div>
+
+      <main style={{ maxWidth: 1100, margin: '0 auto', padding: '1.5rem 1.5rem 3rem' }}>
 
         <div style={{ marginBottom: '2rem' }}>
           <h1 style={{ fontSize: 23, fontWeight: 800, color: NAVY, margin: '0 0 3px' }}>
             Cockpit do Closer
           </h1>
           <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>
-            Gerencie suas mesas, envie propostas e acompanhe suas comissões.
+            Assuma demandas, envie propostas e receba 70% de comissão sobre cada saving homologado.
           </p>
         </div>
 
@@ -503,8 +520,8 @@ export default function DashboardCloserPage() {
 
         <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px 150px 165px 130px', padding: '10px 16px', background: SLATE, borderBottom: `1px solid ${BORDER}` }}>
-            {['CÓDIGO', 'PRODUTO', 'BASELINE', 'COMISSÃO EST.', 'STATUS', 'AÇÃO'].map(c => (
+          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 100px 130px 150px 165px 130px', padding: '10px 16px', background: SLATE, borderBottom: `1px solid ${BORDER}` }}>
+            {['CÓDIGO', 'PRODUTO', 'QTD', 'BASELINE', 'COMISSÃO EST.', 'STATUS', 'AÇÃO'].map(c => (
               <span key={c} style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: '0.07em' }}>{c}</span>
             ))}
           </div>
@@ -519,8 +536,10 @@ export default function DashboardCloserPage() {
           )}
 
           {mesasFiltradas.map((mesa, i) => {
-            const sc       = statusCfg(mesa.status)
-            const comissao = calcComissao(mesa.savingValue ?? 0)
+            const sc         = statusCfg(mesa.status)
+            const qty        = mesa.quantity || 1
+            const targetUnit = mesa.targetValue ?? 0
+            const comissao   = calcComissao(mesa.savingValue ?? 0)
             const podeEnviar = mesa.status === 'IN_NEGOTIATION'
 
             return (
@@ -528,7 +547,7 @@ export default function DashboardCloserPage() {
                 key={mesa.id}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '120px 1fr 130px 150px 165px 130px',
+                  gridTemplateColumns: '120px 1fr 100px 130px 150px 165px 130px',
                   padding: '14px 16px',
                   borderBottom: i === mesasFiltradas.length - 1 ? 'none' : `1px solid ${BORDER}`,
                   alignItems: 'center',
@@ -547,8 +566,12 @@ export default function DashboardCloserPage() {
                   {mesa.title}
                 </span>
 
+                <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>
+                  {qty} un
+                </span>
+
                 <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>
-                  {brl(mesa.targetValue ?? 0)}
+                  {brl(targetUnit * qty)}
                 </span>
 
                 <span style={{ fontSize: 13, fontWeight: 800, color: comissao > 0 ? AMBER : MUTED }}>
