@@ -13,15 +13,13 @@ export interface CreateDealDTO {
   createdById: string
 }
 
-// 1. Buscar Deals por Organização
+// 1. Buscar Deals por Organização (Empresa)
 export async function getDealsByOrganization(organizationId: string) {
   try {
     const deals = await prisma.deal.findMany({
       where: { organizationId },
       include: {
-        createdBy: {
-          select: { name: true, email: true },
-        },
+        createdBy: { select: { name: true, email: true } },
       },
       orderBy: { createdAt: 'desc' },
     })
@@ -32,7 +30,7 @@ export async function getDealsByOrganization(organizationId: string) {
   }
 }
 
-// 2. Buscar Deals disponíveis para o Closer / Consultor
+// 2. Buscar todas as mesas ativas (Cockpit do Closer)
 export async function getAllDeals() {
   try {
     const deals = await prisma.deal.findMany({
@@ -49,7 +47,7 @@ export async function getAllDeals() {
   }
 }
 
-// 3. Criar uma nova mesa de negociação (Deal)
+// 3. Criar uma nova mesa de negociação
 export async function createDeal(data: CreateDealDTO) {
   try {
     const target = data.targetValue ?? 0
@@ -78,35 +76,72 @@ export async function createDeal(data: CreateDealDTO) {
   }
 }
 
-// 4. Atualizar o Status e Valor de Proposta
-export async function updateDealStatus(
-  dealId: string,
-  newStatus: DealStatus,
-  proposedValue?: number
-) {
+// 4. Submeter proposta pelo Closer com validação de Saving Mínimo (3%)
+export async function submeterProposta(dealId: string, proposedValue: number) {
   try {
     const currentDeal = await prisma.deal.findUnique({ where: { id: dealId } })
-    if (!currentDeal) throw new Error('Deal não encontrado')
+    if (!currentDeal) throw new Error('Mesa não encontrada.')
 
-    let updateData: Record<string, unknown> = { status: newStatus }
+    const target = currentDeal.targetValue ?? 0
+    if (proposedValue >= target) {
+      return { success: false, error: 'O valor negociado deve ser menor que o valor atual pago.' }
+    }
 
-    if (proposedValue !== undefined) {
-      const target = currentDeal.targetValue ?? 0
-      const saving = target > proposedValue ? target - proposedValue : 0
-      updateData.currentValue = proposedValue
-      updateData.savingValue = saving
+    const saving = target - proposedValue
+    const percentualSaving = (saving / target) * 100
+
+    if (percentualSaving < 3) {
+      return { success: false, error: 'O saving mínimo para acionar a mesa é de 3%.' }
     }
 
     const updated = await prisma.deal.update({
       where: { id: dealId },
-      data: updateData,
+      data: {
+        currentValue: proposedValue,
+        savingValue: saving,
+        status: DealStatus.PENDING_APPROVAL,
+      },
     })
 
     revalidatePath('/dashboard/empresa')
     revalidatePath('/dashboard/closer')
     return { success: true, data: updated }
   } catch (error) {
-    console.error('Erro ao atualizar deal:', error)
-    return { success: false, error: 'Erro ao atualizar o status.' }
+    console.error('Erro ao submeter proposta:', error)
+    return { success: false, error: 'Erro ao registrar proposta.' }
+  }
+}
+
+// 5. Aprovar Saving (Empresa confirma e libera Escrow)
+export async function aprovarSaving(dealId: string) {
+  try {
+    const updated = await prisma.deal.update({
+      where: { id: dealId },
+      data: { status: DealStatus.APPROVED },
+    })
+
+    revalidatePath('/dashboard/empresa')
+    revalidatePath('/dashboard/closer')
+    return { success: true, data: updated }
+  } catch (error) {
+    console.error('Erro ao aprovar saving:', error)
+    return { success: false, error: 'Erro ao aprovar o saving da mesa.' }
+  }
+}
+
+// 6. Rejeitar ou Cancelar Mesa
+export async function rejeitarMesa(dealId: string) {
+  try {
+    const updated = await prisma.deal.update({
+      where: { id: dealId },
+      data: { status: DealStatus.REJECTED },
+    })
+
+    revalidatePath('/dashboard/empresa')
+    revalidatePath('/dashboard/closer')
+    return { success: true, data: updated }
+  } catch (error) {
+    console.error('Erro ao rejeitar mesa:', error)
+    return { success: false, error: 'Erro ao cancelar mesa.' }
   }
 }

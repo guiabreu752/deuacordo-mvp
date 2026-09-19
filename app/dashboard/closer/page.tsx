@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
-import { getAllDeals, updateDealStatus } from '@/app/actions/deals'
-import { DealStatus } from '@prisma/client'
+import { getAllDeals, submeterProposta } from '@/app/actions/deals'
 
 // ── Paleta ────────────────────────────────────────────────────
 const NAVY   = '#0F172A'
@@ -373,7 +372,7 @@ export default function DashboardCloserPage() {
     if (!user) return
     setEnviando(true)
     try {
-      const res = await updateDealStatus(mesaId, DealStatus.PENDING_APPROVAL, dados.preco)
+      const res = await submeterProposta(mesaId, dados.preco)
       if (!res.success) throw new Error(res.error)
 
       await buscarMesas()
