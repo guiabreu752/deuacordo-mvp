@@ -72,7 +72,7 @@ function Spinner() {
           width: 40, height: 40, border: `3px solid ${BORDER}`, borderTopColor: E,
           borderRadius: '50%', margin: '0 auto 12px', animation: 'spin 0.8s linear infinite',
         }} />
-        <p style={{ fontSize: 13, color: MUTED, fontWeight: 600 }}>Carregando Hub Deal Desk...</p>
+        <p style={{ fontSize: 13, color: MUTED, fontWeight: 600 }}>Carregando Hub DeuAcordo...</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
       </div>
     </div>
@@ -152,18 +152,18 @@ export default function DashboardHubPage() {
   }
 
   // Ações de Navegação Inteligente
-  const handleAcessarEmpresa = (e: React.MouseEvent) => {
+  const handleAcessarEmpresa = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault()
     if (!hasCompany) {
-      e.preventDefault()
       setShowCompanyModal(true)
     } else {
       router.push('/dashboard/empresa')
     }
   }
 
-  const handleAcessarCloser = (e: React.MouseEvent) => {
+  const handleAcessarCloser = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault()
     if (!isCloser) {
-      e.preventDefault()
       setShowCloserModal(true)
     } else {
       router.push('/dashboard/closer')
@@ -220,198 +220,367 @@ export default function DashboardHubPage() {
   if (carregando) return <Spinner />
 
   return (
-    <div style={{ minHeight: '100vh', background: SLATE, fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: SLATE, fontFamily: 'Inter, system-ui, sans-serif' }}>
       
-      {/* ── Header Unificado ── */}
-      <header style={{ background: WHITE, borderBottom: `1px solid ${BORDER}`, padding: '0.9rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-          <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 34, width: 'auto', objectFit: 'contain' }} />
-          <span style={{ fontWeight: 800, fontSize: 17, color: NAVY, letterSpacing: '-0.02em' }}>
-            DeuAcordo<span style={{ color: E }}>.com</span>
-          </span>
-          <span style={{ background: '#ECFDF5', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, border: '1px solid #A7F3D0' }}>
-            Hub Deal Desk
-          </span>
-        </Link>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-          <div style={{ textAlign: 'right' }}>
-            <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, margin: 0 }}>{nomeUsuario}</p>
-            <p style={{ fontSize: 11, color: MUTED, margin: 0 }}>{user?.email}</p>
+      {/* ── SIDEBAR LATERAL ESQUERDA ───────────────────────────── */}
+      <aside style={{
+        width: 260,
+        background: WHITE,
+        borderRight: `1px solid ${BORDER}`,
+        display: 'flex',
+        flexDirection: 'column',
+        justify: 'space-between',
+        position: 'fixed',
+        top: 0,
+        bottom: 0,
+        left: 0,
+        zIndex: 100
+      }}>
+        <div>
+          {/* Logo Branding */}
+          <div style={{ padding: '1.25rem 1.5rem', borderBottom: `1px solid ${BORDER}` }}>
+            <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+              <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 32, width: 'auto', objectFit: 'contain' }} />
+              <span style={{ fontWeight: 800, fontSize: 17, color: NAVY, letterSpacing: '-0.02em' }}>
+                DeuAcordo<span style={{ color: E }}>.com</span>
+              </span>
+            </Link>
           </div>
-          <button onClick={sair} disabled={saindo} style={{
-            fontSize: 13, fontWeight: 700, color: RED, background: '#FEF2F2',
-            border: '1px solid #FECACA', padding: '7px 14px', borderRadius: 7,
-            cursor: saindo ? 'wait' : 'pointer',
-          }}>
-            {saindo ? 'Saindo...' : 'Sair →'}
-          </button>
-        </div>
-      </header>
 
-      <main style={{ maxWidth: 1140, margin: '0 auto', padding: '2rem 1.5rem' }}>
-        
-        {/* Banner Boas-vindas */}
-        <div style={{ marginBottom: '2rem' }}>
-          <h1 style={{ fontSize: 24, fontWeight: 800, color: NAVY, margin: '0 0 4px' }}>
-            Bem-vindo ao Ecossistema Deal Desk
-          </h1>
-          <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>
-            Gerencie suas economias B2B ou atue como um negociador parceiro no mesmo lugar.
-          </p>
-        </div>
-
-        {/* Métricas Globais da Plataforma */}
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
-          <MetricCard label="SAVING TOTAL PLATAFORMA" value={brl(totalSavingGeral)} sub="economia acumulada gerada" accent />
-          <MetricCard label="MESAS EM NEGOCIAÇÃO" value={String(totalMesasAtivas)} sub="demandas ativas no momento" />
-          <MetricCard label="NEGOCIAÇÕES CONCLUÍDAS" value={String(totalConcluidas)} sub="savings homologados" />
-        </div>
-
-        {/* ── MÓDULOS DE OPERAÇÃO: Seleção do Perfil ── */}
-        <div style={{ marginBottom: '2.5rem' }}>
-          <h2 style={{ fontSize: 16, fontWeight: 800, color: NAVY, marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Módulos Operacionais
-          </h2>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
+          {/* Menu de Produtos do Ecossistema */}
+          <div style={{ padding: '1.25rem 1rem' }}>
             
-            {/* Card 1: Área da Empresa */}
-            <div style={{
-              background: WHITE, border: `1.5px solid ${hasCompany ? E : BORDER}`,
-              borderRadius: 14, padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.03)'
-            }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                  <span style={{ fontSize: 32 }}>🏢</span>
-                  <Badge
-                    text={hasCompany ? 'Cadastrado' : 'Ativação Grátis'}
-                    bg={hasCompany ? '#DCFCE7' : '#FEF9C3'}
-                    color={hasCompany ? '#166534' : '#854D0E'}
-                  />
-                </div>
-                <h3 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Área da Empresa</h3>
-                <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: '0 0 1.25rem' }}>
-                  Abra demandas de compra para produtos e insumos. Nossos Closers negociam para sua empresa com 20% de Success Fee.
-                </p>
-              </div>
+            {/* Bloco: Produtos B2B */}
+            <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10, paddingLeft: 8 }}>
+              PRODUTOS & PLATAFORMAS
+            </p>
 
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: '1.5rem' }}>
+              
+              {/* Produto Active: Deal Desk */}
+              <button
+                onClick={() => router.push('/dashboard')}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  background: '#ECFDF5',
+                  border: `1px solid #A7F3D0`,
+                  color: '#065F46',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  textAlign: 'left'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 16 }}>🤝</span>
+                  <span>Deal Desk</span>
+                </div>
+                <span style={{ fontSize: 10, background: E, color: WHITE, padding: '2px 6px', borderRadius: 4, fontWeight: 800 }}>ATIVO</span>
+              </button>
+
+              {/* Espaço Reservado para Novos Produtos Futuros */}
+              {[
+                { name: 'Supplier Match', icon: '🔍' },
+                { name: 'Contract Analytics', icon: '📄' },
+              ].map(p => (
+                <div
+                  key={p.name}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    background: 'transparent',
+                    border: '1px solid transparent',
+                    color: MUTED,
+                    fontSize: 13,
+                    fontWeight: 500,
+                    opacity: 0.65
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 16 }}>{p.icon}</span>
+                    <span>{p.name}</span>
+                  </div>
+                  <span style={{ fontSize: 9, background: SLATE, border: `1px solid ${BORDER}`, color: MUTED, padding: '2px 5px', borderRadius: 4, fontWeight: 700 }}>EM BREVE</span>
+                </div>
+              ))}
+
+            </div>
+
+            {/* Bloco: Módulos do Deal Desk */}
+            <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10, paddingLeft: 8 }}>
+              MÓDULOS DEAL DESK
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              
               <button
                 onClick={handleAcessarEmpresa}
                 style={{
-                  width: '100%', padding: '12px', background: E, border: 'none',
-                  borderRadius: 8, color: WHITE, fontSize: 14, fontWeight: 700,
-                  cursor: 'pointer', textAlign: 'center', display: 'block', textDecoration: 'none'
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '9px 12px',
+                  borderRadius: 8,
+                  background: WHITE,
+                  border: `1px solid ${BORDER}`,
+                  color: NAVY,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textAlign: 'left'
                 }}
               >
-                {hasCompany ? 'Acessar Painel da Empresa →' : '+ Cadastrar Minha Empresa'}
-              </button>
-            </div>
-
-            {/* Card 2: Cockpit do Closer */}
-            <div style={{
-              background: WHITE, border: `1.5px solid ${isCloser ? AMBER : BORDER}`,
-              borderRadius: 14, padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.03)'
-            }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                  <span style={{ fontSize: 32 }}>🎯</span>
-                  <Badge
-                    text={isCloser ? 'Perfil Ativo' : 'Comissão de 70%'}
-                    bg={isCloser ? '#FFFBEB' : '#ECFDF5'}
-                    color={isCloser ? '#92400E' : '#065F46'}
-                  />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 16 }}>🏢</span>
+                  <span>Área da Empresa</span>
                 </div>
-                <h3 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Cockpit do Closer</h3>
-                <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: '0 0 1.25rem' }}>
-                  Assuma mesas de negociação abertas por empresas, busque fornecedores melhores e receba 70% de comissão sobre cada saving.
-                </p>
-              </div>
+                {hasCompany && <span style={{ fontSize: 10, color: E }}>●</span>}
+              </button>
 
               <button
                 onClick={handleAcessarCloser}
                 style={{
-                  width: '100%', padding: '12px', background: AMBER, border: 'none',
-                  borderRadius: 8, color: NAVY, fontSize: 14, fontWeight: 700,
-                  cursor: 'pointer', textAlign: 'center', display: 'block', textDecoration: 'none'
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '9px 12px',
+                  borderRadius: 8,
+                  background: WHITE,
+                  border: `1px solid ${BORDER}`,
+                  color: NAVY,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textAlign: 'left'
                 }}
               >
-                {isCloser ? 'Acessar Cockpit do Closer →' : '🎯 Quero ser um Closer'}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 16 }}>🎯</span>
+                  <span>Cockpit do Closer</span>
+                </div>
+                {isCloser && <span style={{ fontSize: 10, color: AMBER }}>●</span>}
               </button>
+
             </div>
 
           </div>
         </div>
 
-        {/* ── VITRINE GERAL DE MESAS / DEMANDAS ── */}
-        <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ padding: '1.25rem 1.5rem', borderBottom: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h3 style={{ fontSize: 16, fontWeight: 800, color: NAVY, margin: 0 }}>Vitrine do Deal Desk</h3>
-              <p style={{ fontSize: 12, color: MUTED, margin: '2px 0 0' }}>Mesas de negociação disponíveis e ativas na plataforma</p>
+        {/* Rodapé da Sidebar: Perfil + Logout */}
+        <div style={{ padding: '1rem', borderTop: `1px solid ${BORDER}`, background: SLATE }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ overflow: 'hidden', paddingRight: 8 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nomeUsuario}</p>
+              <p style={{ fontSize: 10, color: MUTED, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.email}</p>
             </div>
-            <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{deals.length} mesas registradas</span>
+            <button
+              onClick={sair}
+              disabled={saindo}
+              title="Sair"
+              style={{
+                background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, color: RED,
+                padding: '6px 10px', fontSize: 12, fontWeight: 700, cursor: saindo ? 'wait' : 'pointer', flexShrink: 0
+              }}
+            >
+              {saindo ? '...' : 'Sair'}
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* ── CONTEÚDO PRINCIPAL (DIREITA) ────────────────────────── */}
+      <div style={{ marginLeft: 260, flex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+
+        {/* Top Header */}
+        <header style={{ background: WHITE, borderBottom: `1px solid ${BORDER}`, padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h1 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: 0 }}>
+              Hub General Deal Desk
+            </h1>
+            <p style={{ fontSize: 12, color: MUTED, margin: '2px 0 0' }}>
+              Gestão unificada de cotações B2B, savings e negociadores
+            </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 100px 140px 140px 150px', padding: '10px 16px', background: SLATE, borderBottom: `1px solid ${BORDER}` }}>
-            {['CÓDIGO', 'PRODUTO / DEMANDA', 'QTD', 'BASELINE TOTAL', 'SAVING EST.', 'STATUS'].map(c => (
-              <span key={c} style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: '0.07em' }}>{c}</span>
-            ))}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span style={{ background: '#ECFDF5', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: '1px solid #A7F3D0' }}>
+              Plataforma Ativa
+            </span>
+          </div>
+        </header>
+
+        {/* Conteúdo Interno do Dashboard */}
+        <main style={{ padding: '2rem', maxWidth: 1200, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+          
+          {erroFetch && (
+            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 16px', marginBottom: '1.5rem', color: RED, fontSize: 13, fontWeight: 600 }}>
+              ⚠️ {erroFetch}
+            </div>
+          )}
+
+          {/* Métricas Globais */}
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
+            <MetricCard label="SAVING TOTAL PLATAFORMA" value={brl(totalSavingGeral)} sub="economia acumulada gerada" accent />
+            <MetricCard label="MESAS EM NEGOCIAÇÃO" value={String(totalMesasAtivas)} sub="demandas ativas no momento" />
+            <MetricCard label="NEGOCIAÇÕES CONCLUÍDAS" value={String(totalConcluidas)} sub="savings homologados" />
           </div>
 
-          {deals.length === 0 ? (
-            <div style={{ padding: '3rem', textAlign: 'center' }}>
-              <p style={{ fontSize: 32, marginBottom: 12 }}>🤝</p>
-              <p style={{ fontSize: 15, fontWeight: 700, color: NAVY, margin: '0 0 6px' }}>Nenhuma mesa cadastrada ainda</p>
-              <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>Cadastre sua empresa e abra a primeira demanda de compras.</p>
-            </div>
-          ) : (
-            deals.map((deal, i) => {
-              const sc = statusCfg(deal.status)
-              const qty = deal.quantity || 1
-              const baselineTotal = (deal.targetValue || 0) * qty
+          {/* Cards Rápidos dos Módulos */}
+          <div style={{ marginBottom: '2.5rem' }}>
+            <h2 style={{ fontSize: 14, fontWeight: 800, color: NAVY, marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Módulos de Operação
+            </h2>
 
-              return (
-                <div
-                  key={deal.id}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
+              
+              {/* Card 1: Empresa */}
+              <div style={{
+                background: WHITE, border: `1.5px solid ${hasCompany ? E : BORDER}`,
+                borderRadius: 14, padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
+              }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                    <span style={{ fontSize: 32 }}>🏢</span>
+                    <Badge
+                      text={hasCompany ? 'Cadastrado' : 'Ativação Grátis'}
+                      bg={hasCompany ? '#DCFCE7' : '#FEF9C3'}
+                      color={hasCompany ? '#166534' : '#854D0E'}
+                    />
+                  </div>
+                  <h3 style={{ fontSize: 17, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Área da Empresa</h3>
+                  <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: '0 0 1.25rem' }}>
+                    Abra demandas de compra para produtos e insumos. Nossos Closers negociam para sua empresa com 20% de Success Fee[cite: 19].
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleAcessarEmpresa}
                   style={{
-                    display: 'grid', gridTemplateColumns: '120px 1fr 100px 140px 140px 150px',
-                    padding: '14px 16px', borderBottom: i === deals.length - 1 ? 'none' : `1px solid ${BORDER}`,
-                    alignItems: 'center'
+                    width: '100%', padding: '12px', background: E, border: 'none',
+                    borderRadius: 8, color: WHITE, fontSize: 13, fontWeight: 700,
+                    cursor: 'pointer', textAlign: 'center'
                   }}
                 >
-                  <span style={{ fontSize: 11, fontWeight: 700, color: E, fontFamily: 'monospace' }}>
-                    #{deal.id.slice(0, 8).toUpperCase()}
-                  </span>
+                  {hasCompany ? 'Acessar Painel da Empresa →' : '+ Cadastrar Minha Empresa'}
+                </button>
+              </div>
 
-                  <span style={{ fontSize: 13, color: NAVY, fontWeight: 600, paddingRight: 12 }}>
-                    {deal.title}
-                  </span>
-
-                  <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>
-                    {qty} un
-                  </span>
-
-                  <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>
-                    {brl(baselineTotal)}
-                  </span>
-
-                  <span style={{ fontSize: 13, fontWeight: 800, color: (deal.savingValue || 0) > 0 ? E : MUTED }}>
-                    {(deal.savingValue || 0) > 0 ? brl(deal.savingValue) : '—'}
-                  </span>
-
-                  <Badge text={sc.label} bg={sc.bg} color={sc.color} />
+              {/* Card 2: Closer */}
+              <div style={{
+                background: WHITE, border: `1.5px solid ${isCloser ? AMBER : BORDER}`,
+                borderRadius: 14, padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
+              }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                    <span style={{ fontSize: 32 }}>🎯</span>
+                    <Badge
+                      text={isCloser ? 'Perfil Ativo' : 'Comissão de 70%'}
+                      bg={isCloser ? '#FFFBEB' : '#ECFDF5'}
+                      color={isCloser ? '#92400E' : '#065F46'}
+                    />
+                  </div>
+                  <h3 style={{ fontSize: 17, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Cockpit do Closer</h3>
+                  <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: '0 0 1.25rem' }}>
+                    Assuma mesas de negociação abertas por empresas, busque fornecedores melhores e receba 70% de comissão sobre cada saving[cite: 19].
+                  </p>
                 </div>
-              )
-            })
-          )}
-        </div>
 
-      </main>
+                <button
+                  onClick={handleAcessarCloser}
+                  style={{
+                    width: '100%', padding: '12px', background: AMBER, border: 'none',
+                    borderRadius: 8, color: NAVY, fontSize: 13, fontWeight: 700,
+                    cursor: 'pointer', textAlign: 'center'
+                  }}
+                >
+                  {isCloser ? 'Acessar Cockpit do Closer →' : '🎯 Quero ser um Closer'}
+                </button>
+              </div>
 
-      {/* ── MODAL ON-DEMAND: Cadastro de Empresa ── */}
+            </div>
+          </div>
+
+          {/* Vitrine Geral das Mesas */}
+          <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '1.25rem 1.5rem', borderBottom: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ fontSize: 15, fontWeight: 800, color: NAVY, margin: 0 }}>Vitrine Geral do Deal Desk</h3>
+                <p style={{ fontSize: 12, color: MUTED, margin: '2px 0 0' }}>Todas as mesas de negociação registradas na plataforma</p>
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{deals.length} mesas</span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 90px 140px 140px 150px', padding: '10px 16px', background: SLATE, borderBottom: `1px solid ${BORDER}` }}>
+              {['CÓDIGO', 'PRODUTO / DEMANDA', 'QTD', 'BASELINE TOTAL', 'SAVING EST.', 'STATUS'].map(c => (
+                <span key={c} style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: '0.07em' }}>{c}</span>
+              ))}
+            </div>
+
+            {deals.length === 0 ? (
+              <div style={{ padding: '3rem', textAlign: 'center' }}>
+                <p style={{ fontSize: 32, marginBottom: 12 }}>🤝</p>
+                <p style={{ fontSize: 15, fontWeight: 700, color: NAVY, margin: '0 0 6px' }}>Nenhuma mesa cadastrada ainda</p>
+                <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>Cadastre sua empresa e abra a primeira demanda de compras.</p>
+              </div>
+            ) : (
+              deals.map((deal, i) => {
+                const sc = statusCfg(deal.status)
+                const qty = deal.quantity || 1
+                const baselineTotal = (deal.targetValue || 0) * qty
+
+                return (
+                  <div
+                    key={deal.id}
+                    style={{
+                      display: 'grid', gridTemplateColumns: '120px 1fr 90px 140px 140px 150px',
+                      padding: '14px 16px', borderBottom: i === deals.length - 1 ? 'none' : `1px solid ${BORDER}`,
+                      alignItems: 'center'
+                    }}
+                  >
+                    <span style={{ fontSize: 11, fontWeight: 700, color: E, fontFamily: 'monospace' }}>
+                      #{deal.id.slice(0, 8).toUpperCase()}
+                    </span>
+
+                    <span style={{ fontSize: 13, color: NAVY, fontWeight: 600, paddingRight: 12 }}>
+                      {deal.title}
+                    </span>
+
+                    <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>
+                      {qty} un
+                    </span>
+
+                    <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>
+                      {brl(baselineTotal)}
+                    </span>
+
+                    <span style={{ fontSize: 13, fontWeight: 800, color: (deal.savingValue || 0) > 0 ? E : MUTED }}>
+                      {(deal.savingValue || 0) > 0 ? brl(deal.savingValue) : '—'}
+                    </span>
+
+                    <Badge text={sc.label} bg={sc.bg} color={sc.color} />
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+        </main>
+      </div>
+
+      {/* ── MODAIS ON-DEMAND ───────────────────────────────────── */}
       {showCompanyModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 460, padding: '2rem', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
@@ -456,19 +625,18 @@ export default function DashboardHubPage() {
         </div>
       )}
 
-      {/* ── MODAL ON-DEMAND: Ativação do Perfil de Closer ── */}
       {showCloserModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 480, padding: '2rem', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
             <h3 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Ativar Perfil de Closer / Negociador</h3>
             <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1rem', lineHeight: 1.4 }}>
-              Ao ativar este perfil, você entra para a rede de negociadores da DeuAcordo.com com direito a <strong>70% de comissão</strong> sobre os fees de savings gerados.
+              Ao ativar este perfil, você entra para a rede de negociadores da DeuAcordo.com com direito a <strong>70% de comissão</strong> sobre os fees de savings gerados[cite: 19].
             </p>
 
             <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '1rem', marginBottom: '1.25rem' }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: '#92400E', margin: '0 0 4px' }}>✓ MODELO SUCCESS FEE</p>
               <p style={{ fontSize: 12, color: '#78350F', margin: 0 }}>
-                Sem cobrança mensal ou custo para ingressar. Ganhe proporcionalmente ao resultado entregue ao cliente.
+                Sem cobrança mensal ou custo para ingressar. Ganhe proporcionalmente ao resultado entregue ao cliente[cite: 19].
               </p>
             </div>
 
