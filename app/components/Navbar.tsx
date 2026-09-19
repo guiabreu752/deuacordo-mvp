@@ -1,15 +1,15 @@
 // ============================================================
-// ARQUIVO 1: components/Navbar.tsx
-// Correção dos 2 bugs do dropdown
+// ARQUIVO: app/components/Navbar.tsx
+// Navegação atualizada para direcionar para a DeuAcordo Academy
 // ============================================================
 'use client'
 
 import { useState } from 'react'
 import Link from 'next/link'
 
-const NAVY  = '#0F172A'
-const E     = '#10B981'
-const MUTED = '#64748B'
+const NAVY   = '#0F172A'
+const E      = '#10B981'
+const MUTED  = '#64748B'
 const BORDER = '#E2E8F0'
 
 const menuItems = [
@@ -30,7 +30,7 @@ const menuItems = [
   {
     label: 'Produtos Indicados',
     dropdown: [
-      { icon: '📦', title: 'Categorias em Destaque', desc: 'Insumos, licenças de software, frotas e logística B2B.', href: '/#produtos' },
+      { icon: '📦', title: 'Categorias em Destaque', desc: 'Insumos, licenças de software, frotas e logística B2B.', href: '/academy' },
     ],
   },
   {
@@ -73,7 +73,6 @@ export default function Navbar() {
             <div
               key={item.label}
               style={{ position: 'relative' }}
-              // ✅ FIX 1: só ativa se tiver dropdown; ao sair do item fecha
               onMouseEnter={() => { if (item.dropdown) setActiveDropdown(item.label) }}
               onMouseLeave={() => setActiveDropdown(null)}
             >
@@ -102,13 +101,12 @@ export default function Navbar() {
                 </button>
               )}
 
-              {/* ✅ FIX 2: paddingTop cria ponte invisível entre botão e card,
-                  eliminando o gap que fechava o dropdown prematuramente */}
+              {/* Dropdown Menu */}
               {item.dropdown && activeDropdown === item.label && (
                 <div style={{
                   position: 'absolute', top: '100%', left: 0,
                   width: 300,
-                  paddingTop: 6,  // ponte invisível — não remova
+                  paddingTop: 6,
                   zIndex: 200,
                 }}>
                   <div style={{
@@ -163,4 +161,3 @@ export default function Navbar() {
     </header>
   )
 }
-
