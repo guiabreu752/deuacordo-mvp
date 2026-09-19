@@ -100,7 +100,7 @@ function Spinner() {
   )
 }
 
-// ── Modal Nova Mesa com Cálculo de Quantidade ────────────────
+// ── Modal Nova Mesa ───────────────────────────────────────────
 function ModalNovaMesa({ onClose, onSalvar, salvando }: {
   onClose: () => void
   onSalvar: (f: FormNovaMesa) => Promise<void>
@@ -367,8 +367,8 @@ export default function DashboardEmpresaPage() {
           userId: u.id,
           companyName,
         })
-        if (regRes.success && regRes.organizationId) {
-          orgId = regRes.organizationId
+        if (regRes.success && regRes.organization?.id) {
+          orgId = regRes.organization.id
         }
       }
 
