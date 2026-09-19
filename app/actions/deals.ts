@@ -1,7 +1,7 @@
 'use server'
 
 import { prisma } from '@/lib/prisma'
-import { DealStatus } from '@prisma/client'
+import { DealStatus, Role } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
 export interface CreateDealDTO {
@@ -73,12 +73,12 @@ export async function createDeal(data: CreateDealDTO) {
         id: data.createdById,
         email: `user-${data.createdById.slice(0, 8)}@deuacordo.com`,
         name: 'Usuário Empresa',
-        role: 'CLIENT',
+        role: Role.CLIENT,
       },
     })
 
-    // 3.3. Garante a relação entre o Usuário e a Organização
-    await prisma.userOnOrganization.upsert({
+    // 3.3. Garante a relação entre o Usuário e a Organização (usersOnOrganizations)
+    await prisma.usersOnOrganizations.upsert({
       where: {
         userId_organizationId: {
           userId: user.id,
@@ -89,7 +89,7 @@ export async function createDeal(data: CreateDealDTO) {
       create: {
         userId: user.id,
         organizationId: org.id,
-        role: 'CLIENT',
+        role: Role.CLIENT,
       },
     })
 
