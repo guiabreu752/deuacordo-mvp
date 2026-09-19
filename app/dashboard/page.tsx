@@ -229,7 +229,7 @@ export default function DashboardHubPage() {
         borderRight: `1px solid ${BORDER}`,
         display: 'flex',
         flexDirection: 'column',
-        justify: 'space-between',
+        justifyContent: 'space-between',
         position: 'fixed',
         top: 0,
         bottom: 0,
@@ -461,7 +461,7 @@ export default function DashboardHubPage() {
                   </div>
                   <h3 style={{ fontSize: 17, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Área da Empresa</h3>
                   <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: '0 0 1.25rem' }}>
-                    Abra demandas de compra para produtos e insumos. Nossos Closers negociam para sua empresa com 20% de Success Fee[cite: 19].
+                    Abra demandas de compra para produtos e insumos. Nossos Closers negociam para sua empresa com 20% de Success Fee.
                   </p>
                 </div>
 
@@ -494,7 +494,7 @@ export default function DashboardHubPage() {
                   </div>
                   <h3 style={{ fontSize: 17, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Cockpit do Closer</h3>
                   <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: '0 0 1.25rem' }}>
-                    Assuma mesas de negociação abertas por empresas, busque fornecedores melhores e receba 70% de comissão sobre cada saving[cite: 19].
+                    Assuma mesas de negociação abertas por empresas, busque fornecedores melhores e receba 70% de comissão sobre cada saving.
                   </p>
                 </div>
 
@@ -630,13 +630,13 @@ export default function DashboardHubPage() {
           <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 480, padding: '2rem', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
             <h3 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Ativar Perfil de Closer / Negociador</h3>
             <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1rem', lineHeight: 1.4 }}>
-              Ao ativar este perfil, você entra para a rede de negociadores da DeuAcordo.com com direito a <strong>70% de comissão</strong> sobre os fees de savings gerados[cite: 19].
+              Ao ativar este perfil, você entra para a rede de negociadores da DeuAcordo.com com direito a <strong>70% de comissão</strong> sobre os fees de savings gerados.
             </p>
 
             <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '1rem', marginBottom: '1.25rem' }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: '#92400E', margin: '0 0 4px' }}>✓ MODELO SUCCESS FEE</p>
               <p style={{ fontSize: 12, color: '#78350F', margin: 0 }}>
-                Sem cobrança mensal ou custo para ingressar. Ganhe proporcionalmente ao resultado entregue ao cliente[cite: 19].
+                Sem cobrança mensal ou custo para ingressar. Ganhe proporcionalmente ao resultado entregue ao cliente.
               </p>
             </div>
 
