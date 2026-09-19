@@ -47,13 +47,53 @@ export async function getAllDeals() {
   }
 }
 
-// 3. Criar uma nova mesa de negociação
+// 3. Criar uma nova mesa de negociação com garantias de FK (Organization/User)
 export async function createDeal(data: CreateDealDTO) {
   try {
     const target = data.targetValue ?? 0
     const current = data.currentValue ?? 0
     const saving = target > current ? target - current : 0
 
+    // 3.1. Garante que a Organização exista no banco Prisma
+    const org = await prisma.organization.upsert({
+      where: { id: data.organizationId },
+      update: {},
+      create: {
+        id: data.organizationId,
+        name: 'Empresa Padrão',
+        slug: `org-${data.organizationId.slice(0, 8)}`,
+      },
+    })
+
+    // 3.2. Garante que o Usuário exista no banco Prisma
+    const user = await prisma.user.upsert({
+      where: { id: data.createdById },
+      update: {},
+      create: {
+        id: data.createdById,
+        email: `user-${data.createdById.slice(0, 8)}@deuacordo.com`,
+        name: 'Usuário Empresa',
+        role: 'CLIENT',
+      },
+    })
+
+    // 3.3. Garante a relação entre o Usuário e a Organização
+    await prisma.userOnOrganization.upsert({
+      where: {
+        userId_organizationId: {
+          userId: user.id,
+          organizationId: org.id,
+        },
+      },
+      update: {},
+      create: {
+        userId: user.id,
+        organizationId: org.id,
+        role: 'CLIENT',
+      },
+    })
+
+    // 3.4. Cria o Deal/Mesa no banco
     const newDeal = await prisma.deal.create({
       data: {
         title: data.title,
@@ -62,17 +102,20 @@ export async function createDeal(data: CreateDealDTO) {
         currentValue: current,
         savingValue: saving,
         status: DealStatus.IN_NEGOTIATION,
-        organizationId: data.organizationId,
-        createdById: data.createdById,
+        organizationId: org.id,
+        createdById: user.id,
       },
     })
 
     revalidatePath('/dashboard/empresa')
     revalidatePath('/dashboard/closer')
     return { success: true, data: newDeal }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Erro ao criar deal:', error)
-    return { success: false, error: 'Falha ao registrar negociação.' }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Falha ao registrar negociação.',
+    }
   }
 }
 
