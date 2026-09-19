@@ -5,8 +5,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
+import { getAllDeals } from '@/app/actions/deals'
+import { registerCompanyOnDemand, activateCloserProfileOnDemand, getUserProfileState } from '@/app/actions/user'
 
-// ── Paleta ────────────────────────────────────────────────────
+// ── Paleta Executiva DeuAcordo ──────────────────────────────
 const NAVY   = '#0F172A'
 const E      = '#10B981'
 const MUTED  = '#64748B'
@@ -16,66 +18,21 @@ const WHITE  = '#FFFFFF'
 const AMBER  = '#F59E0B'
 const RED    = '#EF4444'
 
-// ── Tipos ─────────────────────────────────────────────────────
-type Role = 'empresa' | 'closer'
-
-type StatusMesa =
-  | 'Em Negociação'
-  | 'Aguardando Aprovação'
-  | 'Concluída'
-  | 'Cancelada'
-
-// Espelha exatamente as colunas da tabela Supabase
-interface Mesa {
-  id: string
-  criado_em: string
-  user_id: string
-  produto: string
-  baseline: number
-  saving: number
-  preco_proposto: number | null
-  prazo_total: number
-  dias_restantes: number
-  status: StatusMesa
-  fornecedor_atual: string
-  fornecedor_proposto: string
-  criado_por_role: Role
-}
-
-interface FormNovaMesa {
-  produto: string
-  baseline: string
-  preco_alvo: string
-  prazo: string
-}
-
-// ── Helpers ───────────────────────────────────────────────────
+// ── Helpers de Formatação ────────────────────────────────────
 const brl = (n: number) =>
   n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-const calcFee      = (saving: number) => saving * 0.20
-const calcComissao = (saving: number) => saving * 0.20 * 0.70
-
-function statusCfg(s: StatusMesa) {
-  const m: Record<StatusMesa, { bg: string; color: string }> = {
-    'Em Negociação':        { bg: '#DBEAFE', color: '#1D4ED8' },
-    'Aguardando Aprovação': { bg: '#FEF9C3', color: '#854D0E' },
-    'Concluída':            { bg: '#DCFCE7', color: '#166534' },
-    'Cancelada':            { bg: '#FEE2E2', color: '#991B1B' },
+function statusCfg(s: string) {
+  const m: Record<string, { bg: string; color: string; label: string }> = {
+    'IN_NEGOTIATION':   { bg: '#DBEAFE', color: '#1D4ED8', label: 'Em Negociação' },
+    'PENDING_APPROVAL': { bg: '#FEF9C3', color: '#854D0E', label: 'Aguardando Aprovação' },
+    'APPROVED':         { bg: '#DCFCE7', color: '#166534', label: 'Concluída' },
+    'REJECTED':         { bg: '#FEE2E2', color: '#991B1B', label: 'Cancelada' },
+    'DRAFT':            { bg: SLATE,     color: MUTED,     label: 'Rascunho' },
   }
-  return m[s]
+  return m[s] || { bg: SLATE, color: MUTED, label: s }
 }
 
-function urgenciaCfg(dias: number, status: StatusMesa) {
-  if (status === 'Concluída')  return { bg: '#DCFCE7', color: '#166534', label: 'Concluída' }
-  if (status === 'Cancelada')  return { bg: '#FEE2E2', color: '#991B1B', label: 'Cancelada' }
-  if (dias <= 0)               return { bg: '#FEE2E2', color: '#991B1B', label: 'Vencida' }
-  if (dias <= 3)               return { bg: '#FEE2E2', color: '#991B1B', label: `${dias}d rest.` }
-  if (dias <= 7)               return { bg: '#FEF9C3', color: '#854D0E', label: `${dias}d rest.` }
-  return                              { bg: SLATE,     color: MUTED,     label: `${dias}d rest.` }
-}
-
-// ── Sub-componentes ───────────────────────────────────────────
 function Badge({ text, bg, color }: { text: string; bg: string; color: string }) {
   return (
     <span style={{
@@ -86,20 +43,20 @@ function Badge({ text, bg, color }: { text: string; bg: string; color: string })
   )
 }
 
-function MetricCard({ label, value, sub, accent = false }: {
-  label: string; value: string; sub?: string; accent?: boolean
+function MetricCard({ label, value, sub, accent = false, accentColor = E }: {
+  label: string; value: string; sub?: string; accent?: boolean; accentColor?: string
 }) {
   return (
     <div style={{
       background: WHITE,
-      border: `1.5px solid ${accent ? E : BORDER}`,
-      borderRadius: 12, padding: '1.25rem 1.5rem',
-      flex: 1, minWidth: 150,
+      border: `1.5px solid ${accent ? accentColor : BORDER}`,
+      borderRadius: 12, padding: '1.25rem 1.5rem', flex: 1, minWidth: 200,
+      boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
     }}>
-      <p style={{ fontSize: 11, fontWeight: 700, color: accent ? E : MUTED, letterSpacing: '0.07em', margin: '0 0 6px' }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: accent ? accentColor : MUTED, letterSpacing: '0.07em', margin: '0 0 6px', textTransform: 'uppercase' }}>
         {label}
       </p>
-      <p style={{ fontSize: 26, fontWeight: 800, color: accent ? E : NAVY, margin: '0 0 3px', letterSpacing: '-0.02em' }}>
+      <p style={{ fontSize: 26, fontWeight: 800, color: accent ? accentColor : NAVY, margin: '0 0 3px', letterSpacing: '-0.02em' }}>
         {value}
       </p>
       {sub && <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>{sub}</p>}
@@ -107,242 +64,66 @@ function MetricCard({ label, value, sub, accent = false }: {
   )
 }
 
-function Spinner({ fullPage = false }: { fullPage?: boolean }) {
-  const inner = (
-    <div style={{ textAlign: 'center' }}>
-      <div style={{
-        width: 36, height: 36, border: `3px solid ${BORDER}`,
-        borderTopColor: E, borderRadius: '50%',
-        margin: '0 auto 12px', animation: 'spin 0.8s linear infinite',
-      }} />
-      <p style={{ fontSize: 13, color: MUTED }}>Carregando...</p>
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-    </div>
-  )
-  if (!fullPage) return inner
+function Spinner() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: SLATE }}>
-      {inner}
-    </div>
-  )
-}
-
-// ── Modal Nova Mesa ───────────────────────────────────────────
-function ModalNovaMesa({
-  onClose, onSalvar, salvando,
-}: {
-  onClose: () => void
-  onSalvar: (f: FormNovaMesa) => Promise<void>
-  salvando: boolean
-}) {
-  const [form, setForm] = useState<FormNovaMesa>({ produto: '', baseline: '', preco_alvo: '', prazo: '15' })
-  const [erroLocal, setErroLocal] = useState('')
-  const set = (k: keyof FormNovaMesa) => (v: string) => setForm(p => ({ ...p, [k]: v }))
-
-  const previewSaving = (() => {
-    const a = parseFloat(form.baseline.replace(',', '.'))
-    const b = parseFloat(form.preco_alvo.replace(',', '.'))
-    if (!a || !b || b >= a) return null
-    return { valor: a - b, pct: ((a - b) / a * 100).toFixed(1) }
-  })()
-
-  async function submit() {
-    if (!form.produto.trim()) { setErroLocal('Informe o produto.'); return }
-    if (!form.baseline)       { setErroLocal('Informe o valor atual.'); return }
-    setErroLocal('')
-    await onSalvar(form)
-  }
-
-  return (
-    <div
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 480, padding: '2rem', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, margin: 0 }}>Nova Mesa de Negociação</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: MUTED, lineHeight: 1, padding: 0 }}>✕</button>
-        </div>
-
-        {[
-          { label: 'Produto / Insumo *', key: 'produto' as const,   placeholder: 'Ex: 5.000 caixas de papelão ondulado' },
-          { label: 'Valor atual pago (R$) *', key: 'baseline' as const, placeholder: 'Ex: 45000' },
-          { label: 'Preço alvo desejado (R$)', key: 'preco_alvo' as const, placeholder: 'Ex: 38000 (opcional)' },
-        ].map(({ label, key, placeholder }) => (
-          <div key={key} style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {label}
-            </label>
-            <input
-              value={form[key]} placeholder={placeholder}
-              onChange={e => set(key)(e.target.value)}
-              style={{ width: '100%', padding: '10px 13px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, color: NAVY, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
-              onFocus={e => { e.target.style.borderColor = E; e.target.style.boxShadow = `0 0 0 3px ${E}25` }}
-              onBlur={e => { e.target.style.borderColor = BORDER; e.target.style.boxShadow = 'none' }}
-            />
-          </div>
-        ))}
-
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Prazo para resultado
-          </label>
-          <select value={form.prazo} onChange={e => set('prazo')(e.target.value)}
-            style={{ width: '100%', padding: '10px 13px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, color: NAVY, fontSize: 14 }}>
-            <option value="7">7 dias — urgente</option>
-            <option value="15">15 dias — padrão</option>
-            <option value="30">30 dias — sem pressa</option>
-          </select>
-        </div>
-
-        {previewSaving && (
-          <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10, padding: '0.9rem', marginBottom: '1rem' }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: '#047857', letterSpacing: '0.07em', margin: '0 0 4px' }}>PRÉVIA DO SAVING</p>
-            <p style={{ fontSize: 22, fontWeight: 800, color: E, margin: '0 0 2px' }}>{previewSaving.pct}% de economia estimada</p>
-            <p style={{ fontSize: 12, color: '#065F46', margin: 0 }}>
-              Saving: {brl(previewSaving.valor)} · Fee DeuAcordo: {brl(previewSaving.valor * 0.2)}
-            </p>
-          </div>
-        )}
-
-        {erroLocal && (
-          <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', marginBottom: '1rem' }}>
-            <p style={{ fontSize: 13, color: '#DC2626', margin: 0, fontWeight: 500 }}>⚠️ {erroLocal}</p>
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: '12px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-            Cancelar
-          </button>
-          <button onClick={submit} disabled={salvando} style={{ flex: 2, padding: '12px', background: salvando ? '#A7F3D0' : E, border: 'none', borderRadius: 8, color: WHITE, fontSize: 14, fontWeight: 700, cursor: salvando ? 'wait' : 'pointer' }}>
-            {salvando ? 'Salvando...' : 'Abrir Mesa →'}
-          </button>
-        </div>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{
+          width: 40, height: 40, border: `3px solid ${BORDER}`, borderTopColor: E,
+          borderRadius: '50%', margin: '0 auto 12px', animation: 'spin 0.8s linear infinite',
+        }} />
+        <p style={{ fontSize: 13, color: MUTED, fontWeight: 600 }}>Carregando Hub Deal Desk...</p>
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
       </div>
     </div>
   )
 }
 
-// ── Modal Detalhes da Mesa ────────────────────────────────────
-function ModalDetalhes({ mesa, role, onClose }: { mesa: Mesa; role: Role; onClose: () => void }) {
-  const fee      = calcFee(mesa.saving)
-  const comissao = calcComissao(mesa.saving)
-  const sc       = statusCfg(mesa.status)
-
-  return (
-    <div
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 580, maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
-
-        {/* Header */}
-        <div style={{ padding: '1.5rem 2rem', borderBottom: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <p style={{ fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: '0.07em', margin: '0 0 4px' }}>
-              #{mesa.id.slice(0, 8).toUpperCase()}
-            </p>
-            <h2 style={{ fontSize: 16, fontWeight: 800, color: NAVY, margin: '0 0 8px', lineHeight: 1.35 }}>{mesa.produto}</h2>
-            <Badge text={mesa.status} bg={sc.bg} color={sc.color} />
-          </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: MUTED, lineHeight: 1, padding: 0, flexShrink: 0 }}>✕</button>
-        </div>
-
-        <div style={{ padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-
-          {/* Cálculo financeiro */}
-          <div style={{ background: SLATE, borderRadius: 10, padding: '1.25rem', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-            {[
-              { label: 'BASELINE',                                     value: brl(mesa.baseline),  color: NAVY },
-              { label: 'SAVING GERADO',                                value: brl(mesa.saving),    color: E    },
-              {
-                label: role === 'empresa' ? 'FEE (20%)' : 'SUA COMISSÃO',
-                value: role === 'empresa' ? brl(fee) : brl(comissao),
-                color: role === 'empresa' ? NAVY : AMBER,
-              },
-            ].map(({ label, value, color }) => (
-              <div key={label}>
-                <p style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: '0.06em', margin: '0 0 4px' }}>{label}</p>
-                <p style={{ fontSize: 18, fontWeight: 800, color, margin: 0 }}>{value}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Fornecedores */}
-          <div>
-            <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, letterSpacing: '0.05em', margin: '0 0 10px' }}>COMPARATIVO</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '0.9rem' }}>
-                <p style={{ fontSize: 10, fontWeight: 700, color: RED, letterSpacing: '0.06em', margin: '0 0 4px' }}>FORNECEDOR ATUAL</p>
-                <p style={{ fontSize: 13, fontWeight: 700, color: NAVY, margin: '0 0 2px' }}>{mesa.fornecedor_atual}</p>
-                <p style={{ fontSize: 14, fontWeight: 800, color: RED, margin: 0 }}>{brl(mesa.baseline)}</p>
-              </div>
-              <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 8, padding: '0.9rem' }}>
-                <p style={{ fontSize: 10, fontWeight: 700, color: '#065F46', letterSpacing: '0.06em', margin: '0 0 4px' }}>PROPOSTA NEGOCIADA</p>
-                <p style={{ fontSize: 13, fontWeight: 700, color: NAVY, margin: '0 0 2px' }}>{mesa.fornecedor_proposto}</p>
-                <p style={{ fontSize: 14, fontWeight: 800, color: E, margin: 0 }}>
-                  {mesa.preco_proposto ? brl(mesa.preco_proposto) : '—'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Dados adicionais */}
-          <div style={{ background: SLATE, borderRadius: 10, padding: '1rem' }}>
-            {[
-              { label: 'Criado em', value: new Date(mesa.criado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }) },
-              { label: 'Prazo total',      value: `${mesa.prazo_total} dias` },
-              { label: 'Dias restantes',   value: mesa.dias_restantes > 0 ? `${mesa.dias_restantes} dias` : 'Vencida' },
-            ].map(({ label, value }) => (
-              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${BORDER}`, fontSize: 13 }}>
-                <span style={{ color: MUTED }}>{label}</span>
-                <span style={{ color: NAVY, fontWeight: 600 }}>{value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Dashboard Principal ───────────────────────────────────────
-export default function DashboardPage() {
+export default function DashboardHubPage() {
   const router = useRouter()
   const [user, setUser]               = useState<User | null>(null)
-  const [mesas, setMesas]             = useState<Mesa[]>([])
+  const [deals, setDeals]             = useState<any[]>([])
   const [carregando, setCarregando]   = useState(true)
   const [erroFetch, setErroFetch]     = useState('')
-  const [role, setRole]               = useState<Role>('empresa')
-  const [modalNova, setModalNova]     = useState(false)
-  const [salvando, setSalvando]       = useState(false)
-  const [mesaDetalhe, setMesaDetalhe] = useState<Mesa | null>(null)
   const [saindo, setSaindo]           = useState(false)
 
-  // ── Busca mesas do usuário logado ──────────────────────────
-  const buscarMesas = useCallback(async (uid: string) => {
+  // Estado dos Perfis do Usuário (Onboarding por demanda)
+  const [hasCompany, setHasCompany]   = useState(false)
+  const [isCloser, setIsCloser]       = useState(false)
+
+  // Modais de Cadastro On-Demand
+  const [showCompanyModal, setShowCompanyModal] = useState(false)
+  const [showCloserModal, setShowCloserModal]   = useState(false)
+  const [companyName, setCompanyName]           = useState('')
+  const [submittingOnboarding, setSubmittingOnboarding] = useState(false)
+
+  // Carregar dados e perfil do banco de dados
+  const initHub = useCallback(async (uid: string) => {
     setErroFetch('')
     try {
-      const { data, error } = await supabase
-        .from('mesas')
-        .select('*')
-        .eq('user_id', uid)
-        .order('criado_em', { ascending: false })
+      const [dealsRes, profileRes] = await Promise.all([
+        getAllDeals(),
+        getUserProfileState(uid)
+      ])
 
-      if (error) throw error
-      setMesas((data as Mesa[]) ?? [])
+      if (dealsRes.success && dealsRes.data) {
+        setDeals(dealsRes.data)
+      } else {
+        setErroFetch(dealsRes.error || 'Erro ao sincronizar mesas de negociação.')
+      }
+
+      if (profileRes.success) {
+        setHasCompany(profileRes.hasCompany)
+        setIsCloser(profileRes.isCloser)
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao carregar mesas.'
-      setErroFetch(msg)
+      setErroFetch(err instanceof Error ? err.message : 'Falha ao carregar dados do Hub.')
     }
   }, [])
 
-  // ── Proteção de rota + carga inicial ──────────────────────
   useEffect(() => {
     let mounted = true
-
-    async function init() {
+    async function checkUser() {
       const { data: { user: u } } = await supabase.auth.getUser()
       if (!mounted) return
 
@@ -350,92 +131,106 @@ export default function DashboardPage() {
         router.replace('/login')
         return
       }
+
       setUser(u)
-      await buscarMesas(u.id)
+      await initHub(u.id)
       if (mounted) setCarregando(false)
     }
 
-    init()
+    checkUser()
 
-    // Listener para mudanças de sessão (logout em outra aba, expiração, etc.)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(event => {
       if (event === 'SIGNED_OUT') router.replace('/login')
     })
+    return () => { mounted = false; subscription.unsubscribe() }
+  }, [router, initHub])
 
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
-    }
-  }, [router, buscarMesas])
-
-  // ── Sign Out ───────────────────────────────────────────────
   async function sair() {
     setSaindo(true)
     await supabase.auth.signOut()
     router.replace('/login')
   }
 
-  // ── Criar nova mesa no Supabase ───────────────────────────
-  async function criarMesa(form: FormNovaMesa) {
-    if (!user) return
-    setSalvando(true)
-    try {
-      const baseline = parseFloat(form.baseline.replace(',', '.')) || 0
-      const prazo    = parseInt(form.prazo) || 15
-
-      const { error } = await supabase.from('mesas').insert({
-        user_id:            user.id,
-        produto:            form.produto.trim(),
-        baseline,
-        saving:             0,
-        preco_proposto:     null,
-        prazo_total:        prazo,
-        dias_restantes:     prazo,
-        status:             'Em Negociação',
-        fornecedor_atual:   'A definir',
-        fornecedor_proposto:'Aguardando Closer',
-        criado_por_role:    role,
-      })
-
-      if (error) throw error
-
-      // Recarrega a lista do banco (fonte única de verdade)
-      await buscarMesas(user.id)
-      setModalNova(false)
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao criar mesa.'
-      setErroFetch(msg)
-    } finally {
-      setSalvando(false)
+  // Ações de Navegação Inteligente
+  const handleAcessarEmpresa = (e: React.MouseEvent) => {
+    if (!hasCompany) {
+      e.preventDefault()
+      setShowCompanyModal(true)
+    } else {
+      router.push('/dashboard/empresa')
     }
   }
 
-  // ── Métricas calculadas ────────────────────────────────────
-  const totalSaving    = mesas.reduce((s, m) => s + (m.saving ?? 0), 0)
-  const totalBaseline  = mesas.reduce((s, m) => s + (m.baseline ?? 0), 0)
-  const totalComissoes = mesas.reduce((s, m) => s + calcComissao(m.saving ?? 0), 0)
-  const mesasAtivas    = mesas.filter(m => m.status === 'Em Negociação').length
-  const mesasConc      = mesas.filter(m => m.status === 'Concluída').length
-  const taxaMedia      = totalBaseline > 0 ? (totalSaving / totalBaseline * 100) : 0
+  const handleAcessarCloser = (e: React.MouseEvent) => {
+    if (!isCloser) {
+      e.preventDefault()
+      setShowCloserModal(true)
+    } else {
+      router.push('/dashboard/closer')
+    }
+  }
 
-  // Nome de exibição do usuário
-  const nomeUsuario =
-    (user?.user_metadata?.nome_completo as string | undefined)?.split(' ')[0]
+  // Cadastrar Empresa no Modal On-Demand
+  const handleCadastrarEmpresa = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user || !companyName.trim()) return
+    setSubmittingOnboarding(true)
+
+    const res = await registerCompanyOnDemand({
+      userId: user.id,
+      companyName: companyName.trim(),
+    })
+
+    setSubmittingOnboarding(false)
+    if (res.success) {
+      setHasCompany(true)
+      setShowCompanyModal(false)
+      router.push('/dashboard/empresa')
+    } else {
+      alert(res.error || 'Erro ao cadastrar empresa.')
+    }
+  }
+
+  // Ativar Perfil de Closer no Modal On-Demand
+  const handleAtivarCloser = async () => {
+    if (!user) return
+    setSubmittingOnboarding(true)
+
+    const res = await activateCloserProfileOnDemand(user.id)
+
+    setSubmittingOnboarding(false)
+    if (res.success) {
+      setIsCloser(true)
+      setShowCloserModal(false)
+      router.push('/dashboard/closer')
+    } else {
+      alert(res.error || 'Erro ao ativar perfil de Closer.')
+    }
+  }
+
+  // Cálculos consolidados da vitrine do Hub
+  const totalSavingGeral = deals.reduce((acc, d) => acc + (d.savingValue || 0), 0)
+  const totalMesasAtivas = deals.filter(d => d.status === 'IN_NEGOTIATION').length
+  const totalConcluidas  = deals.filter(d => d.status === 'APPROVED').length
+
+  const nomeUsuario = (user?.user_metadata?.nome_completo as string | undefined)?.split(' ')[0]
     ?? user?.email?.split('@')[0]
     ?? 'Usuário'
 
-  // ── Tela de carregamento ───────────────────────────────────
-  if (carregando) return <Spinner fullPage />
+  if (carregando) return <Spinner />
 
   return (
     <div style={{ minHeight: '100vh', background: SLATE, fontFamily: 'Inter, system-ui, sans-serif' }}>
-
-      {/* ── Header ── */}
+      
+      {/* ── Header Unificado ── */}
       <header style={{ background: WHITE, borderBottom: `1px solid ${BORDER}`, padding: '0.9rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+        <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
           <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 34, width: 'auto', objectFit: 'contain' }} />
           <span style={{ fontWeight: 800, fontSize: 17, color: NAVY, letterSpacing: '-0.02em' }}>
             DeuAcordo<span style={{ color: E }}>.com</span>
+          </span>
+          <span style={{ background: '#ECFDF5', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, border: '1px solid #A7F3D0' }}>
+            Hub Deal Desk
           </span>
         </Link>
 
@@ -444,228 +239,257 @@ export default function DashboardPage() {
             <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, margin: 0 }}>{nomeUsuario}</p>
             <p style={{ fontSize: 11, color: MUTED, margin: 0 }}>{user?.email}</p>
           </div>
-          <button
-            onClick={sair}
-            disabled={saindo}
-            style={{ fontSize: 13, fontWeight: 700, color: RED, background: '#FEF2F2', border: '1px solid #FECACA', padding: '7px 14px', borderRadius: 7, cursor: saindo ? 'wait' : 'pointer' }}
-          >
+          <button onClick={sair} disabled={saindo} style={{
+            fontSize: 13, fontWeight: 700, color: RED, background: '#FEF2F2',
+            border: '1px solid #FECACA', padding: '7px 14px', borderRadius: 7,
+            cursor: saindo ? 'wait' : 'pointer',
+          }}>
             {saindo ? 'Saindo...' : 'Sair →'}
           </button>
         </div>
       </header>
 
-      <main style={{ maxWidth: 1100, margin: '0 auto', padding: '2rem 1.5rem' }}>
+      <main style={{ maxWidth: 1140, margin: '0 auto', padding: '2rem 1.5rem' }}>
+        
+        {/* Banner Boas-vindas */}
+        <div style={{ marginBottom: '2rem' }}>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: NAVY, margin: '0 0 4px' }}>
+            Bem-vindo ao Ecossistema Deal Desk
+          </h1>
+          <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>
+            Gerencie suas economias B2B ou atue como um negociador parceiro no mesmo lugar.
+          </p>
+        </div>
 
-        {/* ── Título + Role Switcher ── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
-          <div>
-            <h1 style={{ fontSize: 23, fontWeight: 800, color: NAVY, margin: '0 0 3px' }}>
-              Painel de Mesas
-            </h1>
-            <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>
-              Bem-vindo, {nomeUsuario}. Suas negociações em tempo real.
-            </p>
-          </div>
+        {/* Métricas Globais da Plataforma */}
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
+          <MetricCard label="SAVING TOTAL PLATAFORMA" value={brl(totalSavingGeral)} sub="economia acumulada gerada" accent />
+          <MetricCard label="MESAS EM NEGOCIAÇÃO" value={String(totalMesasAtivas)} sub="demandas ativas no momento" />
+          <MetricCard label="NEGOCIAÇÕES CONCLUÍDAS" value={String(totalConcluidas)} sub="savings homologados" />
+        </div>
 
-          <div style={{ display: 'flex', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 4, gap: 4 }}>
-            {(['empresa', 'closer'] as Role[]).map(r => (
+        {/* ── MÓDULOS DE OPERAÇÃO: Seleção do Perfil ── */}
+        <div style={{ marginBottom: '2.5rem' }}>
+          <h2 style={{ fontSize: 16, fontWeight: 800, color: NAVY, marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Módulos Operacionais
+          </h2>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
+            
+            {/* Card 1: Área da Empresa */}
+            <div style={{
+              background: WHITE, border: `1.5px solid ${hasCompany ? E : BORDER}`,
+              borderRadius: 14, padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.03)'
+            }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                  <span style={{ fontSize: 32 }}>🏢</span>
+                  <Badge
+                    text={hasCompany ? 'Cadastrado' : 'Ativação Grátis'}
+                    bg={hasCompany ? '#DCFCE7' : '#FEF9C3'}
+                    color={hasCompany ? '#166534' : '#854D0E'}
+                  />
+                </div>
+                <h3 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Área da Empresa</h3>
+                <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: '0 0 1.25rem' }}>
+                  Abra demandas de compra para produtos e insumos. Nossos Closers negociam para sua empresa com 20% de Success Fee.
+                </p>
+              </div>
+
               <button
-                key={r}
-                onClick={() => setRole(r)}
+                onClick={handleAcessarEmpresa}
                 style={{
-                  padding: '8px 18px', borderRadius: 7, border: 'none',
-                  background: role === r ? E : 'transparent',
-                  color: role === r ? WHITE : MUTED,
-                  fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                  transition: 'all 0.15s',
+                  width: '100%', padding: '12px', background: E, border: 'none',
+                  borderRadius: 8, color: WHITE, fontSize: 14, fontWeight: 700,
+                  cursor: 'pointer', textAlign: 'center', display: 'block', textDecoration: 'none'
                 }}
               >
-                {r === 'empresa' ? '🏢 Visão Empresa' : '🎯 Visão Closer'}
+                {hasCompany ? 'Acessar Painel da Empresa →' : '+ Cadastrar Minha Empresa'}
               </button>
-            ))}
+            </div>
+
+            {/* Card 2: Cockpit do Closer */}
+            <div style={{
+              background: WHITE, border: `1.5px solid ${isCloser ? AMBER : BORDER}`,
+              borderRadius: 14, padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.03)'
+            }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                  <span style={{ fontSize: 32 }}>🎯</span>
+                  <Badge
+                    text={isCloser ? 'Perfil Ativo' : 'Comissão de 70%'}
+                    bg={isCloser ? '#FFFBEB' : '#ECFDF5'}
+                    color={isCloser ? '#92400E' : '#065F46'}
+                  />
+                </div>
+                <h3 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Cockpit do Closer</h3>
+                <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: '0 0 1.25rem' }}>
+                  Assuma mesas de negociação abertas por empresas, busque fornecedores melhores e receba 70% de comissão sobre cada saving.
+                </p>
+              </div>
+
+              <button
+                onClick={handleAcessarCloser}
+                style={{
+                  width: '100%', padding: '12px', background: AMBER, border: 'none',
+                  borderRadius: 8, color: NAVY, fontSize: 14, fontWeight: 700,
+                  cursor: 'pointer', textAlign: 'center', display: 'block', textDecoration: 'none'
+                }}
+              >
+                {isCloser ? 'Acessar Cockpit do Closer →' : '🎯 Quero ser um Closer'}
+              </button>
+            </div>
+
           </div>
         </div>
 
-        {/* ── Métricas ── */}
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
-          {role === 'empresa' ? (
-            <>
-              <MetricCard label="SAVING TOTAL ACUMULADO"  value={brl(totalSaving)}  sub="economia gerada" accent />
-              <MetricCard label="MESAS ATIVAS"            value={String(mesasAtivas)} sub="em negociação"  />
-              <MetricCard label="MESAS CONCLUÍDAS"        value={String(mesasConc)}   sub="saving confirmado" />
-              <MetricCard label="TAXA MÉDIA DE SAVING"    value={`${taxaMedia.toFixed(1)}%`} sub="das negociações" />
-            </>
-          ) : (
-            <>
-              <MetricCard label="COMISSÕES ESTIMADAS"  value={brl(totalComissoes)}  sub="70% do fee sobre savings" accent />
-              <MetricCard label="MESAS ATIVAS"         value={String(mesasAtivas)}  sub="disponíveis" />
-              <MetricCard label="MESAS CONCLUÍDAS"     value={String(mesasConc)}    sub="comissões liberadas" />
-              <MetricCard label="TAXA MÉDIA DE SAVING" value={`${taxaMedia.toFixed(1)}%`} sub="média das negociações" />
-            </>
-          )}
-        </div>
-
-        {/* ── Erro de fetch ── */}
-        {erroFetch && (
-          <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 16px', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span>⚠️</span>
-            <p style={{ fontSize: 13, color: '#DC2626', margin: 0, fontWeight: 500 }}>{erroFetch}</p>
-            <button
-              onClick={() => user && buscarMesas(user.id)}
-              style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: '#DC2626', background: 'none', border: '1px solid #FECACA', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
-            >
-              Tentar novamente
-            </button>
-          </div>
-        )}
-
-        {/* ── Barra da tabela ── */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-          <p style={{ fontSize: 14, fontWeight: 700, color: NAVY, margin: 0 }}>
-            {mesas.length} mesa{mesas.length !== 1 ? 's' : ''} encontrada{mesas.length !== 1 ? 's' : ''}
-          </p>
-          <button
-            onClick={() => setModalNova(true)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              background: E, border: 'none', borderRadius: 8,
-              color: WHITE, padding: '10px 20px',
-              fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(16,185,129,0.3)',
-            }}
-          >
-            <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> Nova Mesa de Negociação
-          </button>
-        </div>
-
-        {/* ── Tabela ── */}
+        {/* ── VITRINE GERAL DE MESAS / DEMANDAS ── */}
         <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ padding: '1.25rem 1.5rem', borderBottom: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 800, color: NAVY, margin: 0 }}>Vitrine do Deal Desk</h3>
+              <p style={{ fontSize: 12, color: MUTED, margin: '2px 0 0' }}>Mesas de negociação disponíveis e ativas na plataforma</p>
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{deals.length} mesas registradas</span>
+          </div>
 
-          {/* Cabeçalho */}
-          <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr 130px 130px 120px 160px 130px', gap: 0, padding: '10px 16px', background: SLATE, borderBottom: `1px solid ${BORDER}` }}>
-            {['CÓDIGO', 'PRODUTO', 'BASELINE', role === 'empresa' ? 'SAVING' : 'COMISSÃO', 'PRAZO', 'STATUS', 'AÇÃO'].map(c => (
+          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 100px 140px 140px 150px', padding: '10px 16px', background: SLATE, borderBottom: `1px solid ${BORDER}` }}>
+            {['CÓDIGO', 'PRODUTO / DEMANDA', 'QTD', 'BASELINE TOTAL', 'SAVING EST.', 'STATUS'].map(c => (
               <span key={c} style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: '0.07em' }}>{c}</span>
             ))}
           </div>
 
-          {/* Estado vazio */}
-          {mesas.length === 0 && (
+          {deals.length === 0 ? (
             <div style={{ padding: '3rem', textAlign: 'center' }}>
               <p style={{ fontSize: 32, marginBottom: 12 }}>🤝</p>
-              <p style={{ fontSize: 16, fontWeight: 700, color: NAVY, margin: '0 0 6px' }}>Nenhuma mesa ainda</p>
-              <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1.5rem' }}>Crie sua primeira mesa de negociação e comece a economizar.</p>
-              <button
-                onClick={() => setModalNova(true)}
-                style={{ padding: '10px 24px', background: E, border: 'none', borderRadius: 8, color: WHITE, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
-              >
-                + Abrir primeira mesa
-              </button>
+              <p style={{ fontSize: 15, fontWeight: 700, color: NAVY, margin: '0 0 6px' }}>Nenhuma mesa cadastrada ainda</p>
+              <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>Cadastre sua empresa e abra a primeira demanda de compras.</p>
             </div>
-          )}
+          ) : (
+            deals.map((deal, i) => {
+              const sc = statusCfg(deal.status)
+              const qty = deal.quantity || 1
+              const baselineTotal = (deal.targetValue || 0) * qty
 
-          {/* Linhas */}
-          {mesas.map((mesa, i) => {
-            const sc = statusCfg(mesa.status)
-            const uc = urgenciaCfg(mesa.dias_restantes, mesa.status)
-            const valorDestaque = role === 'empresa' ? mesa.saving : calcComissao(mesa.saving)
-
-            return (
-              <div
-                key={mesa.id}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '130px 1fr 130px 130px 120px 160px 130px',
-                  gap: 0,
-                  padding: '14px 16px',
-                  borderBottom: i === mesas.length - 1 ? 'none' : `1px solid ${BORDER}`,
-                  alignItems: 'center',
-                  transition: 'background 0.1s',
-                  cursor: 'pointer',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFC')}
-                onMouseLeave={e => (e.currentTarget.style.background = WHITE)}
-                onClick={() => setMesaDetalhe(mesa)}
-              >
-                {/* Código */}
-                <span style={{ fontSize: 11, fontWeight: 700, color: E, fontFamily: 'monospace' }}>
-                  #{mesa.id.slice(0, 8).toUpperCase()}
-                </span>
-
-                {/* Produto */}
-                <span style={{ fontSize: 13, color: NAVY, fontWeight: 600, paddingRight: 12, lineHeight: 1.35 }}>
-                  {mesa.produto}
-                </span>
-
-                {/* Baseline */}
-                <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{brl(mesa.baseline)}</span>
-
-                {/* Saving / Comissão */}
-                <span style={{ fontSize: 13, fontWeight: 800, color: valorDestaque > 0 ? (role === 'empresa' ? E : AMBER) : MUTED }}>
-                  {valorDestaque > 0 ? brl(valorDestaque) : '—'}
-                </span>
-
-                {/* Prazo */}
-                <div>
-                  <p style={{ fontSize: 12, color: MUTED, margin: '0 0 3px' }}>{mesa.prazo_total}d total</p>
-                  <Badge text={uc.label} bg={uc.bg} color={uc.color} />
-                </div>
-
-                {/* Status */}
-                <Badge text={mesa.status} bg={sc.bg} color={sc.color} />
-
-                {/* Ação */}
-                <button
-                  onClick={e => { e.stopPropagation(); setMesaDetalhe(mesa) }}
+              return (
+                <div
+                  key={deal.id}
                   style={{
-                    padding: '7px 12px', background: 'transparent',
-                    border: `1.5px solid ${BORDER}`, borderRadius: 7,
-                    fontSize: 12, fontWeight: 700, color: NAVY,
-                    cursor: 'pointer', whiteSpace: 'nowrap',
+                    display: 'grid', gridTemplateColumns: '120px 1fr 100px 140px 140px 150px',
+                    padding: '14px 16px', borderBottom: i === deals.length - 1 ? 'none' : `1px solid ${BORDER}`,
+                    alignItems: 'center'
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = E; e.currentTarget.style.color = E }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = BORDER; e.currentTarget.style.color = NAVY }}
                 >
-                  Ver Detalhes →
-                </button>
-              </div>
-            )
-          })}
+                  <span style={{ fontSize: 11, fontWeight: 700, color: E, fontFamily: 'monospace' }}>
+                    #{deal.id.slice(0, 8).toUpperCase()}
+                  </span>
+
+                  <span style={{ fontSize: 13, color: NAVY, fontWeight: 600, paddingRight: 12 }}>
+                    {deal.title}
+                  </span>
+
+                  <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>
+                    {qty} un
+                  </span>
+
+                  <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>
+                    {brl(baselineTotal)}
+                  </span>
+
+                  <span style={{ fontSize: 13, fontWeight: 800, color: (deal.savingValue || 0) > 0 ? E : MUTED }}>
+                    {(deal.savingValue || 0) > 0 ? brl(deal.savingValue) : '—'}
+                  </span>
+
+                  <Badge text={sc.label} bg={sc.bg} color={sc.color} />
+                </div>
+              )
+            })
+          )}
         </div>
 
-        {/* ── Rodapé informativo ── */}
-        {mesas.length > 0 && (
-          <div style={{
-            marginTop: '1.5rem',
-            background: role === 'empresa' ? '#ECFDF5' : '#FFFBEB',
-            border: `1px solid ${role === 'empresa' ? '#A7F3D0' : '#FCD34D'}`,
-            borderRadius: 10, padding: '1rem 1.25rem',
-            display: 'flex', alignItems: 'center', gap: 12,
-          }}>
-            <span style={{ fontSize: 20 }}>{role === 'empresa' ? '💡' : '💰'}</span>
-            <p style={{ fontSize: 13, color: role === 'empresa' ? '#065F46' : '#92400E', margin: 0, lineHeight: 1.55 }}>
-              {role === 'empresa'
-                ? `Você acumulou ${brl(totalSaving)} em economias. Fee total pago: ${brl(totalSaving * 0.2)} — retorno de ${totalSaving > 0 ? ((totalSaving * 0.8) / (totalSaving * 0.2)).toFixed(1) : '—'}x sobre cada real investido.`
-                : `Suas comissões estimadas são ${brl(totalComissoes)}. O split é sempre 70% para você, 30% para a plataforma.`
-              }
-            </p>
-          </div>
-        )}
       </main>
 
-      {/* ── Modais ── */}
-      {modalNova && (
-        <ModalNovaMesa
-          onClose={() => setModalNova(false)}
-          onSalvar={criarMesa}
-          salvando={salvando}
-        />
+      {/* ── MODAL ON-DEMAND: Cadastro de Empresa ── */}
+      {showCompanyModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 460, padding: '2rem', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Cadastre sua Empresa</h3>
+            <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1.25rem', lineHeight: 1.4 }}>
+              Informe a razão social da sua organização para liberar a abertura de demandas de compras e acompanhamento de savings.
+            </p>
+
+            <form onSubmit={handleCadastrarEmpresa}>
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Nome da Empresa / Razão Social *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Minha Empresa LTDA"
+                  value={companyName}
+                  onChange={e => setCompanyName(e.target.value)}
+                  style={{ width: '100%', padding: '10px 13px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowCompanyModal(false)}
+                  style={{ padding: '10px 16px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingOnboarding}
+                  style={{ padding: '10px 20px', background: E, border: 'none', borderRadius: 8, color: WHITE, fontSize: 13, fontWeight: 700, cursor: submittingOnboarding ? 'wait' : 'pointer' }}
+                >
+                  {submittingOnboarding ? 'Ativando...' : 'Cadastrar e Acessar Painel'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
-      {mesaDetalhe && (
-        <ModalDetalhes
-          mesa={mesaDetalhe}
-          role={role}
-          onClose={() => setMesaDetalhe(null)}
-        />
+
+      {/* ── MODAL ON-DEMAND: Ativação do Perfil de Closer ── */}
+      {showCloserModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 480, padding: '2rem', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Ativar Perfil de Closer / Negociador</h3>
+            <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1rem', lineHeight: 1.4 }}>
+              Ao ativar este perfil, você entra para a rede de negociadores da DeuAcordo.com com direito a <strong>70% de comissão</strong> sobre os fees de savings gerados.
+            </p>
+
+            <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '1rem', marginBottom: '1.25rem' }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: '#92400E', margin: '0 0 4px' }}>✓ MODELO SUCCESS FEE</p>
+              <p style={{ fontSize: 12, color: '#78350F', margin: 0 }}>
+                Sem cobrança mensal ou custo para ingressar. Ganhe proporcionalmente ao resultado entregue ao cliente.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setShowCloserModal(false)}
+                style={{ padding: '10px 16px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+              >
+                Voltar
+              </button>
+              <button
+                onClick={handleAtivarCloser}
+                disabled={submittingOnboarding}
+                style={{ padding: '10px 20px', background: AMBER, border: 'none', borderRadius: 8, color: NAVY, fontSize: 13, fontWeight: 700, cursor: submittingOnboarding ? 'wait' : 'pointer' }}
+              >
+                {submittingOnboarding ? 'Ativando...' : 'Confirmar e Ser Closer'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <style>{`* { box-sizing: border-box; }`}</style>

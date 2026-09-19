@@ -1,0 +1,103 @@
+'use server'
+
+import { prisma } from '@/lib/prisma'
+import { Role } from '@prisma/client'
+import { revalidatePath } from 'next/cache'
+
+// 1. Obter o estado de cadastro unificado do usuário
+export async function getUserProfileState(userId: string) {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        organizations: {
+          include: { organization: true },
+        },
+      },
+    })
+
+    if (!user) return { success: false, hasCompany: false, isCloser: false }
+
+    const hasCompany = user.organizations.length > 0
+    const isCloser = user.role === Role.CONSULTANT || user.role === Role.ADMIN
+
+    return {
+      success: true,
+      user,
+      hasCompany,
+      isCloser,
+      company: hasCompany ? user.organizations[0].organization : null,
+    }
+  } catch (error) {
+    console.error('Erro ao buscar perfil:', error)
+    return { success: false, hasCompany: false, isCloser: false }
+  }
+}
+
+// 2. Onboarding On-Demand: Cadastrar Empresa
+export async function registerCompanyOnDemand(data: {
+  userId: string
+  companyName: string
+  cnpj?: string
+}) {
+  try {
+    const slug = `org-${data.companyName.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${data.userId.slice(0, 4)}`
+
+    // Cria a organização no Prisma
+    const org = await prisma.organization.create({
+      data: {
+        name: data.companyName,
+        cnpj: data.cnpj,
+        slug,
+      },
+    })
+
+    // Garante que o usuário exista
+    const user = await prisma.user.upsert({
+      where: { id: data.userId },
+      update: {},
+      create: {
+        id: data.userId,
+        email: `user-${data.userId.slice(0, 8)}@deuacordo.com`,
+        name: data.companyName,
+        role: Role.BUYER,
+      },
+    })
+
+    // Vincula Usuário à Organização
+    await prisma.usersOnOrganizations.create({
+      data: {
+        userId: user.id,
+        organizationId: org.id,
+        role: Role.BUYER,
+      },
+    })
+
+    revalidatePath('/dashboard')
+    revalidatePath('/dashboard/empresa')
+    return { success: true, organization: org }
+  } catch (error: unknown) {
+    console.error('Erro ao registrar empresa:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Falha ao cadastrar empresa.',
+    }
+  }
+}
+
+// 3. Onboarding On-Demand: Ativar Perfil de Closer/Consultor
+export async function activateCloserProfileOnDemand(userId: string) {
+  try {
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { role: Role.CONSULTANT },
+    })
+
+    revalidatePath('/dashboard')
+    revalidatePath('/dashboard/closer')
+    return { success: true, user: updatedUser }
+  } catch (error) {
+    console.error('Erro ao ativar perfil de closer:', error)
+    return { success: false, error: 'Falha ao ativar perfil de closer.' }
+  }
+}
