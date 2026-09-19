@@ -18,6 +18,21 @@ const WHITE  = '#FFFFFF'
 const AMBER  = '#F59E0B'
 const RED    = '#EF4444'
 
+// ── Lista Completa de Produtos da Plataforma ────────────────
+const ECOSSISTEMA_PRODUTOS = [
+  { id: 'deal-desk',    name: 'Deal Desk',     icon: '🤝', active: true,  desc: 'Centralizador e pipeline visual' },
+  { id: 'ai-breakdown', name: 'AI Breakdown',  icon: '🤖', active: false, desc: 'Desfragmentador e leitor de minutas' },
+  { id: 'auction',      name: 'Auction',       icon: '⚡', active: false, desc: 'Leilão reverso ao vivo' },
+  { id: 'benchmark',    name: 'Benchmark',     icon: '📊', active: false, desc: 'Inteligência comparativa de preços' },
+  { id: 'legal',        name: 'Legal',         icon: '⚖️', active: false, desc: 'Conformidade e minutas automáticas' },
+  { id: 'risk',         name: 'Risk',          icon: '🛡️', active: false, desc: 'Score de risco e homologação' },
+  { id: 'matrix',       name: 'Matrix',        icon: '📐', active: false, desc: 'Matriz de decisão ponderada' },
+  { id: 'pulse',        name: 'Pulse',         icon: '📈', active: false, desc: 'Dashboard executivo em tempo real' },
+  { id: 'route',        name: 'Route',         icon: '🔀', active: false, desc: 'Roteamento de aprovações' },
+  { id: 'club',         name: 'Club',          icon: '💎', active: false, desc: 'Comunidade e rede VIP' },
+  { id: 'academy',      name: 'Academy',       icon: '🎓', active: false, desc: 'Plataforma LMS de capacitação' },
+]
+
 // ── Helpers de Formatação ────────────────────────────────────
 const brl = (n: number) =>
   n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -224,7 +239,7 @@ export default function DashboardHubPage() {
       
       {/* ── SIDEBAR LATERAL ESQUERDA ───────────────────────────── */}
       <aside style={{
-        width: 260,
+        width: 270,
         background: WHITE,
         borderRight: `1px solid ${BORDER}`,
         display: 'flex',
@@ -236,9 +251,9 @@ export default function DashboardHubPage() {
         left: 0,
         zIndex: 100
       }}>
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 65px)' }}>
           {/* Logo Branding */}
-          <div style={{ padding: '1.25rem 1.5rem', borderBottom: `1px solid ${BORDER}` }}>
+          <div style={{ padding: '1.25rem 1.5rem', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
             <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
               <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 32, width: 'auto', objectFit: 'contain' }} />
               <span style={{ fontWeight: 800, fontSize: 17, color: NAVY, letterSpacing: '-0.02em' }}>
@@ -247,80 +262,15 @@ export default function DashboardHubPage() {
             </Link>
           </div>
 
-          {/* Menu de Produtos do Ecossistema */}
-          <div style={{ padding: '1.25rem 1rem' }}>
+          {/* Menu de Produtos do Ecossistema com Scroll */}
+          <div style={{ padding: '1.25rem 1rem', overflowY: 'auto', flex: 1 }}>
             
-            {/* Bloco: Produtos B2B */}
-            <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10, paddingLeft: 8 }}>
-              PRODUTOS & PLATAFORMAS
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: '1.5rem' }}>
-              
-              {/* Produto Active: Deal Desk */}
-              <button
-                onClick={() => router.push('/dashboard')}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  background: '#ECFDF5',
-                  border: `1px solid #A7F3D0`,
-                  color: '#065F46',
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  textAlign: 'left'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 16 }}>🤝</span>
-                  <span>Deal Desk</span>
-                </div>
-                <span style={{ fontSize: 10, background: E, color: WHITE, padding: '2px 6px', borderRadius: 4, fontWeight: 800 }}>ATIVO</span>
-              </button>
-
-              {/* Espaço Reservado para Novos Produtos Futuros */}
-              {[
-                { name: 'Supplier Match', icon: '🔍' },
-                { name: 'Contract Analytics', icon: '📄' },
-              ].map(p => (
-                <div
-                  key={p.name}
-                  style={{
-                    width: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    background: 'transparent',
-                    border: '1px solid transparent',
-                    color: MUTED,
-                    fontSize: 13,
-                    fontWeight: 500,
-                    opacity: 0.65
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 16 }}>{p.icon}</span>
-                    <span>{p.name}</span>
-                  </div>
-                  <span style={{ fontSize: 9, background: SLATE, border: `1px solid ${BORDER}`, color: MUTED, padding: '2px 5px', borderRadius: 4, fontWeight: 700 }}>EM BREVE</span>
-                </div>
-              ))}
-
-            </div>
-
-            {/* Bloco: Módulos do Deal Desk */}
-            <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10, paddingLeft: 8 }}>
+            {/* Bloco: Módulos do Deal Desk (Core) */}
+            <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 8 }}>
               MÓDULOS DEAL DESK
             </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: '1.5rem' }}>
               
               <button
                 onClick={handleAcessarEmpresa}
@@ -341,7 +291,7 @@ export default function DashboardHubPage() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 16 }}>🏢</span>
+                  <span style={{ fontSize: 15 }}>🏢</span>
                   <span>Área da Empresa</span>
                 </div>
                 {hasCompany && <span style={{ fontSize: 10, color: E }}>●</span>}
@@ -366,7 +316,7 @@ export default function DashboardHubPage() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 16 }}>🎯</span>
+                  <span style={{ fontSize: 15 }}>🎯</span>
                   <span>Cockpit do Closer</span>
                 </div>
                 {isCloser && <span style={{ fontSize: 10, color: AMBER }}>●</span>}
@@ -374,11 +324,51 @@ export default function DashboardHubPage() {
 
             </div>
 
+            {/* Bloco: Todos os Produtos Mapeados do Ecossistema */}
+            <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 8 }}>
+              PRODUTOS B2B DEUACORDO
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {ECOSSISTEMA_PRODUTOS.map(p => (
+                <div
+                  key={p.id}
+                  title={p.desc}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    background: p.active ? '#ECFDF5' : 'transparent',
+                    border: `1px solid ${p.active ? '#A7F3D0' : 'transparent'}`,
+                    color: p.active ? '#065F46' : NAVY,
+                    fontSize: 12.5,
+                    fontWeight: p.active ? 700 : 500,
+                    opacity: p.active ? 1 : 0.75,
+                    cursor: p.active ? 'pointer' : 'default'
+                  }}
+                  onClick={() => p.active && router.push('/dashboard')}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 15 }}>{p.icon}</span>
+                    <span>{p.name}</span>
+                  </div>
+                  {p.active ? (
+                    <span style={{ fontSize: 9, background: E, color: WHITE, padding: '2px 5px', borderRadius: 4, fontWeight: 800 }}>ATIVO</span>
+                  ) : (
+                    <span style={{ fontSize: 9, background: SLATE, border: `1px solid ${BORDER}`, color: MUTED, padding: '2px 5px', borderRadius: 4, fontWeight: 700 }}>EM BREVE</span>
+                  )}
+                </div>
+              ))}
+            </div>
+
           </div>
         </div>
 
         {/* Rodapé da Sidebar: Perfil + Logout */}
-        <div style={{ padding: '1rem', borderTop: `1px solid ${BORDER}`, background: SLATE }}>
+        <div style={{ padding: '1rem', borderTop: `1px solid ${BORDER}`, background: SLATE, flexShrink: 0, height: 65, boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ overflow: 'hidden', paddingRight: 8 }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nomeUsuario}</p>
@@ -400,7 +390,7 @@ export default function DashboardHubPage() {
       </aside>
 
       {/* ── CONTEÚDO PRINCIPAL (DIREITA) ────────────────────────── */}
-      <div style={{ marginLeft: 260, flex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ marginLeft: 270, flex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
 
         {/* Top Header */}
         <header style={{ background: WHITE, borderBottom: `1px solid ${BORDER}`, padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -415,7 +405,7 @@ export default function DashboardHubPage() {
 
           <div style={{ display: 'flex', gap: 8 }}>
             <span style={{ background: '#ECFDF5', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: '1px solid #A7F3D0' }}>
-              Plataforma Ativa
+              Ecossistema B2B
             </span>
           </div>
         </header>
@@ -461,7 +451,7 @@ export default function DashboardHubPage() {
                   </div>
                   <h3 style={{ fontSize: 17, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Área da Empresa</h3>
                   <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: '0 0 1.25rem' }}>
-                    Abra demandas de compra para produtos e insumos. Nossos Closers negociam para sua empresa com 20% de Success Fee.
+                    Abra demandas de compra para produtos e insumos. Nossos Closers negociam para sua empresa com 20% de Success Fee[cite: 17].
                   </p>
                 </div>
 
@@ -494,7 +484,7 @@ export default function DashboardHubPage() {
                   </div>
                   <h3 style={{ fontSize: 17, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Cockpit do Closer</h3>
                   <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: '0 0 1.25rem' }}>
-                    Assuma mesas de negociação abertas por empresas, busque fornecedores melhores e receba 70% de comissão sobre cada saving.
+                    Assuma mesas de negociação abertas por empresas, busque fornecedores melhores e receba 70% de comissão sobre cada saving[cite: 17].
                   </p>
                 </div>
 
@@ -630,13 +620,13 @@ export default function DashboardHubPage() {
           <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 480, padding: '2rem', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
             <h3 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Ativar Perfil de Closer / Negociador</h3>
             <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1rem', lineHeight: 1.4 }}>
-              Ao ativar este perfil, você entra para a rede de negociadores da DeuAcordo.com com direito a <strong>70% de comissão</strong> sobre os fees de savings gerados.
+              Ao ativar este perfil, você entra para a rede de negociadores da DeuAcordo.com com direito a <strong>70% de comissão</strong> sobre os fees de savings gerados[cite: 17].
             </p>
 
             <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '1rem', marginBottom: '1.25rem' }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: '#92400E', margin: '0 0 4px' }}>✓ MODELO SUCCESS FEE</p>
               <p style={{ fontSize: 12, color: '#78350F', margin: 0 }}>
-                Sem cobrança mensal ou custo para ingressar. Ganhe proporcionalmente ao resultado entregue ao cliente.
+                Sem cobrança mensal ou custo para ingressar. Ganhe proporcionalmente ao resultado entregue ao cliente[cite: 17].
               </p>
             </div>
 
