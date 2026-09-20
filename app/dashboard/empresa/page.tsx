@@ -350,7 +350,7 @@ export default function DashboardEmpresaPage() {
   // Buscar apenas as mesas cadastradas pelo próprio usuário
   const buscarMesas = useCallback(async (userId: string) => {
     setErroFetch('')
-    const res = await getDealsByUser(userId) // <--- FILTRO POR USUÁRIO LOGADO
+    const res = await getDealsByUser(userId)
     if (res.success && res.data) {
       setMesas(res.data)
     } else {
@@ -486,7 +486,7 @@ export default function DashboardEmpresaPage() {
               PRODUTOS B2B DEUACORDO
             </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: '1.5rem' }}>
               {ECOSSISTEMA_PRODUTOS.map(p => (
                 <div
                   key={p.id}
@@ -520,6 +520,33 @@ export default function DashboardEmpresaPage() {
                 </div>
               ))}
             </div>
+
+            {/* ── BOTÃO CONFIGURAÇÕES NA SIDEBAR ────────────────── */}
+            <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 8 }}>
+              GERENCIAMENTO
+            </p>
+
+            <Link
+              href="/dashboard/empresa/configuracoes"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '9px 11px',
+                borderRadius: 8,
+                background: SLATE,
+                border: `1px solid ${BORDER}`,
+                color: NAVY,
+                fontSize: 13,
+                fontWeight: 600,
+                textDecoration: 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span style={{ fontSize: 16 }}>⚙️</span>
+              <span>Configurações</span>
+            </Link>
+
           </div>
         </div>
 
@@ -562,8 +589,8 @@ export default function DashboardEmpresaPage() {
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: 8 }}>
-            <span style={{ background: '#ECFDF5', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: '1px solid #A7F3D0' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <span style={{ background: '#ECFDF5', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 6, border: '1px solid #A7F3D0' }}>
               🏢 Painel da Empresa
             </span>
           </div>
