@@ -21,7 +21,6 @@ const MUTED  = '#64748B'
 const BORDER = '#E2E8F0'
 const SLATE  = '#F8FAFC'
 const WHITE  = '#FFFFFF'
-const AMBER  = '#F59E0B'
 const RED    = '#EF4444'
 
 const ECOSSISTEMA_PRODUTOS = [
@@ -82,19 +81,27 @@ export default function AiBreakdownPage() {
 
   const initData = useCallback(async (uid: string) => {
     try {
+      setCarregando(true)
       const profile = await getUserProfileState(uid)
-      if (profile.success && profile.company) {
-        setOrgId(profile.company.id)
-        const res = await getBreakdownsByOrganization(profile.company.id)
-        if (res.success && res.data) {
-          setBreakdowns(res.data)
-          if (res.data.length > 0) {
-            loadBreakdownIntoForm(res.data[0])
-          }
+      
+      // Fallback seguro de ID da organização
+      let targetOrgId = profile.success && profile.company ? profile.company.id : null
+
+      if (!targetOrgId) {
+        targetOrgId = uid
+      }
+
+      setOrgId(targetOrgId)
+
+      const res = await getBreakdownsByOrganization(targetOrgId)
+      if (res.success && res.data) {
+        setBreakdowns(res.data)
+        if (res.data.length > 0) {
+          loadBreakdownIntoForm(res.data[0])
         }
       }
     } catch (err) {
-      console.error(err)
+      console.error('Erro ao inicializar dados:', err)
     } finally {
       setCarregando(false)
     }
@@ -244,8 +251,11 @@ export default function AiBreakdownPage() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
-    if (!orgId) {
-      alert('Organização não identificada. Recarregue a página.')
+
+    const activeOrgId = orgId || user?.id
+
+    if (!activeOrgId) {
+      alert('Sessão expirada. Faça login novamente.')
       return
     }
 
@@ -262,18 +272,18 @@ export default function AiBreakdownPage() {
       productName: productName.trim(),
       sellingPrice: price,
       blocks,
-      organizationId: orgId,
+      organizationId: activeOrgId,
     })
 
     setSalvando(false)
 
     if (res.success && res.data) {
-      const updated = await getBreakdownsByOrganization(orgId)
+      const updated = await getBreakdownsByOrganization(activeOrgId)
       if (updated.success && updated.data) {
         setBreakdowns(updated.data)
         loadBreakdownIntoForm(res.data)
       }
-      alert('Breakdown salvo na biblioteca com sucesso!')
+      alert('Breakdown salvo na biblioteca de produtos com sucesso!')
     } else {
       alert(res.error || 'Erro ao salvar breakdown.')
     }
@@ -281,9 +291,10 @@ export default function AiBreakdownPage() {
 
   async function handleDelete(id: string) {
     if (!confirm('Deseja excluir esta análise da sua biblioteca?')) return
+    const activeOrgId = orgId || user?.id
     const res = await deleteCostBreakdown(id)
-    if (res.success && orgId) {
-      const updated = await getBreakdownsByOrganization(orgId)
+    if (res.success && activeOrgId) {
+      const updated = await getBreakdownsByOrganization(activeOrgId)
       if (updated.success && updated.data) {
         setBreakdowns(updated.data)
         if (updated.data.length > 0) loadBreakdownIntoForm(updated.data[0])
@@ -408,6 +419,7 @@ export default function AiBreakdownPage() {
           </div>
 
           <button
+            type="button"
             onClick={resetForm}
             style={{ padding: '9px 16px', background: E, border: 'none', borderRadius: 8, color: WHITE, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
           >
@@ -421,6 +433,7 @@ export default function AiBreakdownPage() {
             <span style={{ fontSize: 12, fontWeight: 700, color: MUTED, whiteSpace: 'nowrap' }}>Sua Biblioteca:</span>
             {breakdowns.map(b => (
               <button
+                type="button"
                 key={b.id}
                 onClick={() => loadBreakdownIntoForm(b)}
                 style={{
