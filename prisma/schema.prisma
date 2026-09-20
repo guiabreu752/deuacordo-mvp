@@ -109,22 +109,16 @@ model CostBreakdown {
   productName  String // Nome do produto/serviço analisado
   sellingPrice Float  // Preço de venda praticado no mercado
 
-  // ---- CENÁRIO ATUAL (CUSTOS MANUAIS) ----
-  rawMaterialCost Float  @default(0) // Insumos / Matéria-Prima
-  laborCost       Float  @default(0) // Mão de obra
-  energyCost      Float  @default(0) // Energia / Utilidades
-  logisticsCost   Float  @default(0) // Frete / Impostos / Outros
-  currentMarkup   Float? // Markup calculado ((Preço - CustoTotal) / CustoTotal)
-  currentProfit   Float? // Lucro líquido/bruto em R$
+  // Dados consolidados
+  totalCurrentCost Float @default(0)
+  totalTargetCost  Float @default(0)
+  currentProfit    Float @default(0)
+  currentMarkup    Float @default(0)
+  targetProfit     Float @default(0)
+  targetMarkup     Float @default(0)
 
-  // ---- CENÁRIO TARGET (DESEJADO / ESPELHADO) ----
-  targetRawMaterialCost Float  @default(0)
-  targetLaborCost       Float  @default(0)
-  targetEnergyCost      Float  @default(0)
-  targetLogisticsCost   Float  @default(0)
-  targetSellingPrice    Float?
-  targetMarkup          Float?
-  targetProfit          Float?
+  // Estrutura flexível de blocos customizáveis armazenada em JSON
+  blocksJson String @db.Text @default("[]")
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
