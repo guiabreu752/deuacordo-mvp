@@ -33,13 +33,19 @@ enum DealStatus {
 // --------------------------------------
 
 model Organization {
-  id             String   @id @default(cuid())
-  name           String
-  slug           String   @unique
-  cnpj           String?  @unique
-  enabledModules String[] @default(["deal-desk"])
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  name                 String
+  slug                 String   @unique
+  cnpj                 String?  @unique
+  faturamentoAnual     String?
+  gastoComprasAno      String?
+  categoriasPraticadas String?
+  escopoMercado        String?  @default("NACIONAL")
+  moedasUtilizadas     String?  @default("BRL")
+  segmentoEmpresa      String?  @default("COMERCIO")
+  enabledModules       String[] @default(["deal-desk"])
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   users          UsersOnOrganizations[]
   deals          Deal[]

@@ -52,12 +52,12 @@ export async function registerCompanyOnDemand(data: RegisterCompanyDTO) {
   try {
     const slug = `org-${data.companyName.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${data.userId.slice(0, 4)}`
 
-    // Cria a organização com os dados de inteligência B2B
+    // Cria a organização no Prisma com a qualificação B2B
     const org = await prisma.organization.create({
       data: {
         name: data.companyName,
-        cnpj: data.cnpj,
         slug,
+        cnpj: data.cnpj || null,
         faturamentoAnual: data.faturamentoAnual || null,
         gastoComprasAno: data.gastoComprasAno || null,
         categoriasPraticadas: data.categoriasPraticadas ? data.categoriasPraticadas.join(', ') : null,
