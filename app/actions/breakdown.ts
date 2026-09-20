@@ -3,11 +3,20 @@
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 
+export interface SubItem {
+  id: string
+  name: string
+  quantity: number
+  unitCost: number
+  totalCost: number
+}
+
 export interface BreakdownBlockItem {
   id: string
   name: string
   currentCost: number
   targetCost: number
+  subItems?: SubItem[]
 }
 
 export interface SaveCostBreakdownDTO {
@@ -18,7 +27,7 @@ export interface SaveCostBreakdownDTO {
   organizationId: string
 }
 
-// 1. Buscar todos os Cost Breakdowns da Organização (para a Biblioteca e Dashboard)
+// 1. Buscar todos os Breakdowns por Organização
 export async function getBreakdownsByOrganization(organizationId: string) {
   try {
     const breakdowns = await prisma.costBreakdown.findMany({
@@ -38,17 +47,21 @@ export async function getBreakdownsByOrganization(organizationId: string) {
   }
 }
 
-// 2. Criar ou Atualizar uma Análise de Breakdown com Blocos Flexíveis
+// 2. Salvar/Atualizar Breakdown com suporte a blocos e subitens
 export async function saveCostBreakdown(data: SaveCostBreakdownDTO) {
   try {
     if (!data.productName.trim()) {
       return { success: false, error: 'O nome do produto é obrigatório.' }
     }
-    if (data.sellingPrice <= 0) {
-      return { success: false, error: 'O preço de venda deve ser maior que zero.' }
-    }
 
-    const totalCurrentCost = data.blocks.reduce((acc, b) => acc + (Number(b.currentCost) || 0), 0)
+    // Calcular custo total somando todos os blocos
+    const totalCurrentCost = data.blocks.reduce((acc, b) => {
+      if (b.subItems && b.subItems.length > 0) {
+        return acc + b.subItems.reduce((sAcc, sub) => sAcc + (Number(sub.totalCost) || 0), 0)
+      }
+      return acc + (Number(b.currentCost) || 0)
+    }, 0)
+
     const totalTargetCost = data.blocks.reduce((acc, b) => acc + (Number(b.targetCost) || 0), 0)
 
     const currentProfit = data.sellingPrice - totalCurrentCost
@@ -62,7 +75,6 @@ export async function saveCostBreakdown(data: SaveCostBreakdownDTO) {
     let breakdown
 
     if (data.id) {
-      // Atualiza registro existente
       breakdown = await prisma.costBreakdown.update({
         where: { id: data.id },
         data: {
@@ -78,7 +90,6 @@ export async function saveCostBreakdown(data: SaveCostBreakdownDTO) {
         },
       })
     } else {
-      // Cria novo registro
       breakdown = await prisma.costBreakdown.create({
         data: {
           productName: data.productName.trim(),
@@ -107,12 +118,12 @@ export async function saveCostBreakdown(data: SaveCostBreakdownDTO) {
     console.error('Erro ao salvar cost breakdown:', error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Erro ao registrar breakdown de custo.',
+      error: error instanceof Error ? error.message : 'Erro ao salvar breakdown na biblioteca.',
     }
   }
 }
 
-// 3. Excluir Item da Biblioteca
+// 3. Excluir item
 export async function deleteCostBreakdown(id: string) {
   try {
     await prisma.costBreakdown.delete({ where: { id } })

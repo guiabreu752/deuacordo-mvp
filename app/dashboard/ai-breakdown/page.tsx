@@ -10,6 +10,7 @@ import {
   saveCostBreakdown,
   deleteCostBreakdown,
   BreakdownBlockItem,
+  SubItem,
 } from '@/app/actions/breakdown'
 import { getUserProfileState } from '@/app/actions/user'
 
@@ -20,12 +21,26 @@ const MUTED  = '#64748B'
 const BORDER = '#E2E8F0'
 const SLATE  = '#F8FAFC'
 const WHITE  = '#FFFFFF'
+const AMBER  = '#F59E0B'
 const RED    = '#EF4444'
+
+const ECOSSISTEMA_PRODUTOS = [
+  { id: 'deal-desk',    name: 'Deal Desk',     icon: '🤝', active: true,  href: '/dashboard' },
+  { id: 'ai-breakdown', name: 'AI Breakdown',  icon: '🤖', active: true,  href: '/dashboard/ai-breakdown' },
+  { id: 'auction',      name: 'Auction',       icon: '⚡', active: false, href: '#' },
+  { id: 'benchmark',    name: 'Benchmark',     icon: '📊', active: false, href: '#' },
+  { id: 'legal',        name: 'Legal',         icon: '⚖️', active: false, href: '#' },
+  { id: 'risk',         name: 'Risk',          icon: '🛡️', active: false, href: '#' },
+  { id: 'matrix',       name: 'Matrix',        icon: '📐', active: false, href: '#' },
+  { id: 'pulse',        name: 'Pulse',         icon: '📈', active: false, href: '#' },
+  { id: 'route',        name: 'Route',         icon: '🔀', active: false, href: '#' },
+  { id: 'club',         name: 'Club',          icon: '💎', active: false, href: '#' },
+  { id: 'academy',      name: 'Academy',       icon: '🎓', active: false, href: '#' },
+]
 
 const brl = (n: number) =>
   n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-// Opções Sugeridas para Adicionar Blocos Rapidamente
 const BLOCOS_SUGERIDOS = [
   'Matéria-Prima / Insumos',
   'Mão de Obra Direta',
@@ -33,8 +48,6 @@ const BLOCOS_SUGERIDOS = [
   'Frete / Logística',
   'Embalagem / Armazenamento',
   'Impostos e Taxas',
-  'Manutenção e Depreciação',
-  'Terceirizados e Serviços',
 ]
 
 export default function AiBreakdownPage() {
@@ -46,19 +59,24 @@ export default function AiBreakdownPage() {
   const [salvando, setSalvando]       = useState(false)
   const [selectedId, setSelectedId]   = useState<string | null>(null)
 
-  // Estado do Produto
+  // Estado da Ficha de Produto
   const [productName, setProductName]   = useState('')
   const [sellingPrice, setSellingPrice] = useState('')
+  const [markupPercent, setMarkupPercent] = useState('')
 
-  // Blocos Dinâmicos de Custos
+  // Blocos e Subitens
   const [blocks, setBlocks] = useState<BreakdownBlockItem[]>([
-    { id: '1', name: 'Matéria-Prima / Insumos', currentCost: 0, targetCost: 0 },
-    { id: '2', name: 'Mão de Obra Direta', currentCost: 0, targetCost: 0 },
-    { id: '3', name: 'Energia / Utilidades', currentCost: 0, targetCost: 0 },
-    { id: '4', name: 'Frete / Logística / Impostos', currentCost: 0, targetCost: 0 },
+    {
+      id: '1',
+      name: 'Matéria-Prima / Insumos',
+      currentCost: 0,
+      targetCost: 0,
+      subItems: []
+    },
+    { id: '2', name: 'Mão de Obra Direta', currentCost: 0, targetCost: 0, subItems: [] },
+    { id: '3', name: 'Energia / Utilidades', currentCost: 0, targetCost: 0, subItems: [] },
   ])
 
-  // Adição de Blocos
   const [customCategory, setCustomCategory] = useState('')
   const [selectedPreset, setSelectedPreset] = useState('')
 
@@ -99,6 +117,7 @@ export default function AiBreakdownPage() {
     setSelectedId(b.id)
     setProductName(b.productName)
     setSellingPrice(String(b.sellingPrice))
+    setMarkupPercent(b.currentMarkup ? b.currentMarkup.toFixed(1) : '')
     if (Array.isArray(b.blocks) && b.blocks.length > 0) {
       setBlocks(b.blocks)
     } else {
@@ -110,24 +129,104 @@ export default function AiBreakdownPage() {
     setSelectedId(null)
     setProductName('')
     setSellingPrice('')
+    setMarkupPercent('')
     setBlocks([
-      { id: Date.now().toString() + '1', name: 'Matéria-Prima / Insumos', currentCost: 0, targetCost: 0 },
-      { id: Date.now().toString() + '2', name: 'Mão de Obra Direta', currentCost: 0, targetCost: 0 },
-      { id: Date.now().toString() + '3', name: 'Energia / Utilidades', currentCost: 0, targetCost: 0 },
-      { id: Date.now().toString() + '4', name: 'Frete / Logística / Impostos', currentCost: 0, targetCost: 0 },
+      { id: Date.now().toString() + '1', name: 'Matéria-Prima / Insumos', currentCost: 0, targetCost: 0, subItems: [] },
+      { id: Date.now().toString() + '2', name: 'Mão de Obra Direta', currentCost: 0, targetCost: 0, subItems: [] },
+      { id: Date.now().toString() + '3', name: 'Energia / Utilidades', currentCost: 0, targetCost: 0, subItems: [] },
     ])
   }
 
-  // Operações de Blocos
+  // Cálculos dinâmicos de Custos
+  const curTotalCost = blocks.reduce((acc, b) => {
+    if (b.subItems && b.subItems.length > 0) {
+      return acc + b.subItems.reduce((sAcc, sub) => sAcc + (sub.totalCost || 0), 0)
+    }
+    return acc + (b.currentCost || 0)
+  }, 0)
+
+  const tarTotalCost = blocks.reduce((acc, b) => acc + (b.targetCost || 0), 0)
+
+  // Alteração no Preço de Venda reflete no Markup
+  const handleSellingPriceChange = (val: string) => {
+    setSellingPrice(val)
+    const price = parseFloat(val) || 0
+    if (curTotalCost > 0 && price > 0) {
+      const profit = price - curTotalCost
+      const mk = (profit / curTotalCost) * 100
+      setMarkupPercent(mk.toFixed(1))
+    }
+  }
+
+  // Alteração no Markup reflete no Preço de Venda
+  const handleMarkupChange = (val: string) => {
+    setMarkupPercent(val)
+    const mk = parseFloat(val) || 0
+    if (curTotalCost > 0) {
+      const calculatedPrice = curTotalCost * (1 + mk / 100)
+      setSellingPrice(calculatedPrice.toFixed(2))
+    }
+  }
+
+  // Adicionar e Gerenciar Subitens dentro de um Bloco
+  function handleAddSubItem(blockId: string) {
+    const subName = prompt('Nome do ingrediente/insumo (ex: Queijo, Carne, Pão):')
+    if (!subName) return
+
+    const qtyStr = prompt('Quantidade utilizada (ex: 0.02 para 20g se o preço for por kg, ou 1 para un):', '1')
+    const unitPriceStr = prompt('Preço por unidade/kg (R$):', '0')
+
+    const qty = parseFloat(qtyStr || '1') || 1
+    const unitPrice = parseFloat(unitPriceStr || '0') || 0
+    const totalCost = qty * unitPrice
+
+    const newSub: SubItem = {
+      id: Date.now().toString(),
+      name: subName,
+      quantity: qty,
+      unitCost: unitPrice,
+      totalCost,
+    }
+
+    setBlocks(prev =>
+      prev.map(b => {
+        if (b.id === blockId) {
+          const updatedSubItems = [...(b.subItems || []), newSub]
+          const newBlockCurrentCost = updatedSubItems.reduce((sum, s) => sum + s.totalCost, 0)
+          return {
+            ...b,
+            subItems: updatedSubItems,
+            currentCost: newBlockCurrentCost,
+          }
+        }
+        return b
+      })
+    )
+  }
+
+  function handleRemoveSubItem(blockId: string, subId: string) {
+    setBlocks(prev =>
+      prev.map(b => {
+        if (b.id === blockId) {
+          const updatedSubItems = (b.subItems || []).filter(s => s.id !== subId)
+          const newBlockCurrentCost = updatedSubItems.reduce((sum, s) => sum + s.totalCost, 0)
+          return {
+            ...b,
+            subItems: updatedSubItems,
+            currentCost: newBlockCurrentCost,
+          }
+        }
+        return b
+      })
+    )
+  }
+
   function handleAddBlock(nameToAdd: string) {
     if (!nameToAdd.trim()) return
-    const newBlock: BreakdownBlockItem = {
-      id: Date.now().toString(),
-      name: nameToAdd.trim(),
-      currentCost: 0,
-      targetCost: 0,
-    }
-    setBlocks(prev => [...prev, newBlock])
+    setBlocks(prev => [
+      ...prev,
+      { id: Date.now().toString(), name: nameToAdd.trim(), currentCost: 0, targetCost: 0, subItems: [] }
+    ])
     setCustomCategory('')
     setSelectedPreset('')
   }
@@ -143,35 +242,15 @@ export default function AiBreakdownPage() {
     )
   }
 
-  function handleUpdateBlockName(id: string, newName: string) {
-    setBlocks(prev =>
-      prev.map(b => (b.id === id ? { ...b, name: newName } : b))
-    )
-  }
-
-  // Cálculos dinâmicos
-  const priceNum = parseFloat(sellingPrice) || 0
-  const curTotalCost = blocks.reduce((acc, b) => acc + (b.currentCost || 0), 0)
-  const tarTotalCost = blocks.reduce((acc, b) => acc + (b.targetCost || 0), 0)
-
-  const curProfit = priceNum - curTotalCost
-  const curMarkup = curTotalCost > 0 ? (curProfit / curTotalCost) * 100 : 0
-
-  const tarProfit = priceNum - tarTotalCost
-  const tarMarkup = tarTotalCost > 0 ? (tarProfit / tarTotalCost) * 100 : 0
-
-  const gapSaving = curTotalCost - tarTotalCost
-
-  // Cálculos do Mini Dashboard
-  const totalProdutos = breakdowns.length
-  const totalSavingGeral = breakdowns.reduce((acc, item) => acc + Math.max(0, item.totalCurrentCost - item.totalTargetCost), 0)
-  const custoMedioGeral = totalProdutos > 0 ? breakdowns.reduce((acc, item) => acc + item.totalCurrentCost, 0) / totalProdutos : 0
-  const precoMedioGeral = totalProdutos > 0 ? breakdowns.reduce((acc, item) => acc + item.sellingPrice, 0) / totalProdutos : 0
-
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
-    if (!orgId) return
-    if (!productName.trim() || priceNum <= 0) {
+    if (!orgId) {
+      alert('Organização não identificada. Recarregue a página.')
+      return
+    }
+
+    const price = parseFloat(sellingPrice) || 0
+    if (!productName.trim() || price <= 0) {
       alert('Informe o nome do produto e um preço de venda válido.')
       return
     }
@@ -181,7 +260,7 @@ export default function AiBreakdownPage() {
     const res = await saveCostBreakdown({
       id: selectedId || undefined,
       productName: productName.trim(),
-      sellingPrice: priceNum,
+      sellingPrice: price,
       blocks,
       organizationId: orgId,
     })
@@ -194,14 +273,14 @@ export default function AiBreakdownPage() {
         setBreakdowns(updated.data)
         loadBreakdownIntoForm(res.data)
       }
-      alert('Breakdown de Custo salvo na biblioteca com sucesso!')
+      alert('Breakdown salvo na biblioteca com sucesso!')
     } else {
-      alert(res.error || 'Erro ao salvar a análise.')
+      alert(res.error || 'Erro ao salvar breakdown.')
     }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Tem certeza que deseja excluir esta análise da biblioteca?')) return
+    if (!confirm('Deseja excluir esta análise da sua biblioteca?')) return
     const res = await deleteCostBreakdown(id)
     if (res.success && orgId) {
       const updated = await getBreakdownsByOrganization(orgId)
@@ -212,6 +291,15 @@ export default function AiBreakdownPage() {
       }
     }
   }
+
+  const priceNum = parseFloat(sellingPrice) || 0
+  const curProfit = priceNum - curTotalCost
+  const tarProfit = priceNum - tarTotalCost
+  const gapSaving = curTotalCost - tarTotalCost
+
+  const nomeUsuario = (user?.user_metadata?.nome_completo as string | undefined)?.split(' ')[0]
+    ?? user?.email?.split('@')[0]
+    ?? 'Usuário'
 
   if (carregando) {
     return (
@@ -224,168 +312,189 @@ export default function AiBreakdownPage() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: SLATE, fontFamily: 'Inter, system-ui, sans-serif' }}>
       
-      <div style={{ flex: 1, padding: '2rem', maxWidth: 1280, margin: '0 auto', width: '100%' }}>
+      {/* ── SIDEBAR LATERAL FIXA DA PLATAFORMA ────────────────── */}
+      <aside style={{
+        width: 270,
+        background: WHITE,
+        borderRight: `1px solid ${BORDER}`,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        position: 'fixed',
+        top: 0,
+        bottom: 0,
+        left: 0,
+        zIndex: 100
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 65px)' }}>
+          <div style={{ padding: '1.25rem 1.5rem', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
+            <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+              <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 32, width: 'auto', objectFit: 'contain' }} />
+              <span style={{ fontWeight: 800, fontSize: 17, color: NAVY, letterSpacing: '-0.02em' }}>
+                DeuAcordo<span style={{ color: E }}>.com</span>
+              </span>
+            </Link>
+          </div>
+
+          <div style={{ padding: '1.25rem 1rem', overflowY: 'auto', flex: 1 }}>
+            <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 8 }}>
+              MÓDULOS DEAL DESK
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: '1.5rem' }}>
+              <Link href="/dashboard/empresa" style={{ textDecoration: 'none' }}>
+                <div style={{ width: '100%', padding: '9px 12px', borderRadius: 8, background: WHITE, border: `1px solid ${BORDER}`, color: NAVY, fontSize: 13, fontWeight: 600 }}>
+                  🏢 Área da Empresa
+                </div>
+              </Link>
+              <Link href="/dashboard/closer" style={{ textDecoration: 'none' }}>
+                <div style={{ width: '100%', padding: '9px 12px', borderRadius: 8, background: WHITE, border: `1px solid ${BORDER}`, color: NAVY, fontSize: 13, fontWeight: 600 }}>
+                  🎯 Cockpit do Closer
+                </div>
+              </Link>
+            </div>
+
+            <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 8 }}>
+              PRODUTOS B2B DEUACORDO
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {ECOSSISTEMA_PRODUTOS.map(p => (
+                <div
+                  key={p.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '8px 10px', borderRadius: 8,
+                    background: p.id === 'ai-breakdown' ? '#ECFDF5' : 'transparent',
+                    border: `1px solid ${p.id === 'ai-breakdown' ? '#A7F3D0' : 'transparent'}`,
+                    color: p.id === 'ai-breakdown' ? '#065F46' : NAVY,
+                    fontSize: 12.5, fontWeight: p.id === 'ai-breakdown' ? 700 : 500, cursor: p.active ? 'pointer' : 'default'
+                  }}
+                  onClick={() => p.active && router.push(p.href)}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 15 }}>{p.icon}</span>
+                    <span>{p.name}</span>
+                  </div>
+                  {p.active ? (
+                    <span style={{ fontSize: 9, background: E, color: WHITE, padding: '2px 5px', borderRadius: 4, fontWeight: 800 }}>ATIVO</span>
+                  ) : (
+                    <span style={{ fontSize: 9, background: SLATE, border: `1px solid ${BORDER}`, color: MUTED, padding: '2px 5px', borderRadius: 4, fontWeight: 700 }}>EM BREVE</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ padding: '1rem', borderTop: `1px solid ${BORDER}`, background: SLATE, flexShrink: 0, height: 65 }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, margin: 0 }}>{nomeUsuario}</p>
+          <p style={{ fontSize: 10, color: MUTED, margin: 0 }}>{user?.email}</p>
+        </div>
+      </aside>
+
+      {/* ── CONTEÚDO PRINCIPAL (DIREITA COM MARGEM) ─────────────── */}
+      <div style={{ marginLeft: 270, flex: 1, minHeight: '100vh', padding: '2rem' }}>
         
-        {/* Top Header */}
+        {/* Topo / Header da Página */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Link href="/dashboard" style={{ color: MUTED, textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>← Voltar ao Hub</Link>
-              <span style={{ color: MUTED }}>/</span>
-              <span style={{ color: NAVY, fontSize: 13, fontWeight: 700 }}>AI Breakdown (MVP)</span>
-            </div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: NAVY, margin: '4px 0 0' }}>
-              DeuAcordo Breakdown — Construtor de Cost Breakdown
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: NAVY, margin: 0 }}>
+              DeuAcordo Breakdown — Ficha Térmica & Cost Breakdown
             </h1>
+            <p style={{ fontSize: 12, color: MUTED, margin: '2px 0 0' }}>
+              Defina os componentes do produto, calcule o markup e acompanhe os targets de custos.
+            </p>
           </div>
 
           <button
             onClick={resetForm}
-            style={{
-              padding: '9px 16px', background: E, border: 'none',
-              borderRadius: 8, color: WHITE, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(16,185,129,0.25)'
-            }}
+            style={{ padding: '9px 16px', background: E, border: 'none', borderRadius: 8, color: WHITE, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
           >
-            + Analisar Novo Produto
+            + Novo Produto
           </button>
         </div>
 
-        {/* ── MINI DASHBOARD DA EMPRESA ─────────────────── */}
-        <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 14, padding: '1.25rem 1.5rem', marginBottom: '1.5rem', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-          <p style={{ fontSize: 11, fontWeight: 800, color: MUTED, letterSpacing: '0.07em', textTransform: 'uppercase', margin: '0 0 10px' }}>
-            📈 VISÃO GERAL DA CARTEIRA DE PRODUTOS DA EMPRESA
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-            <div>
-              <p style={{ fontSize: 11, color: MUTED, margin: 0, fontWeight: 600 }}>PRODUTOS CATALOGADOS</p>
-              <p style={{ fontSize: 22, fontWeight: 800, color: NAVY, margin: '2px 0 0' }}>{totalProdutos} itens</p>
-            </div>
-            <div>
-              <p style={{ fontSize: 11, color: MUTED, margin: 0, fontWeight: 600 }}>PREÇO MÉDIO DE VENDA</p>
-              <p style={{ fontSize: 22, fontWeight: 800, color: NAVY, margin: '2px 0 0' }}>{brl(precoMedioGeral)}</p>
-            </div>
-            <div>
-              <p style={{ fontSize: 11, color: MUTED, margin: 0, fontWeight: 600 }}>CUSTO MÉDIO ATUAL</p>
-              <p style={{ fontSize: 22, fontWeight: 800, color: NAVY, margin: '2px 0 0' }}>{brl(custoMedioGeral)}</p>
-            </div>
-            <div>
-              <p style={{ fontSize: 11, color: MUTED, margin: 0, fontWeight: 600 }}>SAVING POTENCIAL TOTAL (GAP)</p>
-              <p style={{ fontSize: 22, fontWeight: 800, color: totalSavingGeral > 0 ? E : MUTED, margin: '2px 0 0' }}>{brl(totalSavingGeral)}</p>
-            </div>
+        {/* Seletor de Produtos na Biblioteca */}
+        {breakdowns.length > 0 && (
+          <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '1rem', marginBottom: '1.5rem', display: 'flex', gap: 10, alignItems: 'center', overflowX: 'auto' }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: MUTED, whiteSpace: 'nowrap' }}>Sua Biblioteca:</span>
+            {breakdowns.map(b => (
+              <button
+                key={b.id}
+                onClick={() => loadBreakdownIntoForm(b)}
+                style={{
+                  padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                  background: selectedId === b.id ? NAVY : SLATE,
+                  color: selectedId === b.id ? WHITE : NAVY,
+                  border: `1px solid ${selectedId === b.id ? NAVY : BORDER}`
+                }}
+              >
+                {b.productName} ({brl(b.sellingPrice)})
+              </button>
+            ))}
           </div>
-        </div>
-
-        {/* ── BIBLIOTECA DE PRODUTOS DA EMPRESA ────────── */}
-        <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '1rem', marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontSize: 12, fontWeight: 800, color: NAVY, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              📚 Sua Biblioteca de Produtos
-            </span>
-            <span style={{ fontSize: 11, color: MUTED }}>Clique para carregar e editar</span>
-          </div>
-
-          {breakdowns.length === 0 ? (
-            <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>Nenhum produto salvo na sua biblioteca ainda. Preencha a análise abaixo para salvar.</p>
-          ) : (
-            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
-              {breakdowns.map(b => {
-                const gap = Math.max(0, b.totalCurrentCost - b.totalTargetCost)
-                const isSelected = selectedId === b.id
-                return (
-                  <button
-                    key={b.id}
-                    onClick={() => loadBreakdownIntoForm(b)}
-                    style={{
-                      padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-                      background: isSelected ? NAVY : SLATE,
-                      color: isSelected ? WHITE : NAVY,
-                      border: `1.5px solid ${isSelected ? NAVY : BORDER}`,
-                      display: 'flex', alignItems: 'center', gap: 8
-                    }}
-                  >
-                    <span>{b.productName}</span>
-                    <span style={{ fontSize: 10, opacity: 0.8 }}>({brl(b.sellingPrice)})</span>
-                    {gap > 0 && (
-                      <span style={{ fontSize: 10, background: isSelected ? E : '#DCFCE7', color: isSelected ? WHITE : '#166534', padding: '2px 6px', borderRadius: 10 }}>
-                        -{brl(gap)}
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
+        )}
 
         <form onSubmit={handleSave}>
           
-          {/* Identificação do Produto */}
+          {/* Blocos de Entrada Básica + Markup em Tempo Real */}
           <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '1.25rem 1.5rem', marginBottom: '1.5rem' }}>
-            <h3 style={{ fontSize: 13, fontWeight: 800, color: NAVY, margin: '0 0 1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              1. Identificação do Produto
+            <h3 style={{ fontSize: 13, fontWeight: 800, color: NAVY, margin: '0 0 1rem', textTransform: 'uppercase' }}>
+              1. Precificação do Produto
             </h3>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 240px', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 200px 180px', gap: '1rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 4 }}>
-                  NOME DO PRODUTO / ITEM *
-                </label>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 4 }}>NOME DO PRODUTO *</label>
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Pneu Aro 16 / Bobina de Aço 1020"
+                  placeholder="Ex: X-Salada Especial / Pneu Aro 16"
                   value={productName}
                   onChange={e => setProductName(e.target.value)}
-                  style={{ width: '100%', padding: '10px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '10px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 13, outline: 'none' }}
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 4 }}>
-                  PREÇO DE VENDA PRATICADO (R$) *
-                </label>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 4 }}>PREÇO DE VENDA (R$)</label>
                 <input
                   type="number"
                   step="0.01"
-                  required
-                  placeholder="Ex: 700.00"
+                  placeholder="0.00"
                   value={sellingPrice}
-                  onChange={e => setSellingPrice(e.target.value)}
-                  style={{ width: '100%', padding: '10px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                  onChange={e => handleSellingPriceChange(e.target.value)}
+                  style={{ width: '100%', padding: '10px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 13, outline: 'none' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: E, marginBottom: 4 }}>MARKUP DESEJADO (%)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  placeholder="Ex: 50"
+                  value={markupPercent}
+                  onChange={e => handleMarkupChange(e.target.value)}
+                  style={{ width: '100%', padding: '10px', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 8, fontSize: 13, fontWeight: 700, color: '#065F46', outline: 'none' }}
                 />
               </div>
             </div>
           </div>
 
-          {/* ── CONSTRUTOR DINÂMICO DE BLOCOS ───────────────────── */}
+          {/* Adicionar Novos Blocos */}
           <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 14, padding: '1.5rem', marginBottom: '1.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <div>
-                <h3 style={{ fontSize: 14, fontWeight: 800, color: NAVY, margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  2. Estrutura e Blocos de Custo
-                </h3>
-                <p style={{ fontSize: 12, color: MUTED, margin: '2px 0 0' }}>
-                  Adicione, edite ou remova blocos conforme a composição de custos da sua operação.
-                </p>
-              </div>
-            </div>
-
-            {/* Painel para Adicionar Novos Blocos */}
-            <div style={{ background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '1rem', marginBottom: '1.5rem', display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-              
-              {/* Bloco Padrão */}
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 4 }}>
-                  ADICIONAR BLOCO PADRÃO
-                </label>
+            <div style={{ background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '1rem', marginBottom: '1.5rem', display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 4 }}>SELECIONAR BLOCO PADRÃO</label>
                 <select
                   value={selectedPreset}
                   onChange={e => {
                     setSelectedPreset(e.target.value)
                     if (e.target.value) handleAddBlock(e.target.value)
                   }}
-                  style={{ width: '100%', padding: '9px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12.5, outline: 'none' }}
+                  style={{ width: '100%', padding: '9px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12.5 }}
                 >
                   <option value="">-- Escolha um bloco pronto --</option>
                   {BLOCOS_SUGERIDOS.map(item => (
@@ -394,81 +503,87 @@ export default function AiBreakdownPage() {
                 </select>
               </div>
 
-              {/* Bloco Personalizado */}
-              <div style={{ flex: 1.5, minWidth: 240, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+              <div style={{ flex: 1.5, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 4 }}>
-                    OU ESCREVA UM BLOCO PERSONALIZADO
-                  </label>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 4 }}>OU DIGITE UM BLOCO PERSONALIZADO</label>
                   <input
                     type="text"
-                    placeholder="Ex: Royalty, Software, Licenciamento..."
+                    placeholder="Ex: Embalagens, Impostos..."
                     value={customCategory}
                     onChange={e => setCustomCategory(e.target.value)}
-                    style={{ width: '100%', padding: '9px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12.5, outline: 'none', boxSizing: 'border-box' }}
+                    style={{ width: '100%', padding: '9px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12.5 }}
                   />
                 </div>
                 <button
                   type="button"
                   onClick={() => handleAddBlock(customCategory)}
                   disabled={!customCategory.trim()}
-                  style={{
-                    padding: '9px 15px', background: customCategory.trim() ? NAVY : BORDER,
-                    color: customCategory.trim() ? WHITE : MUTED, border: 'none', borderRadius: 8,
-                    fontSize: 12.5, fontWeight: 700, cursor: customCategory.trim() ? 'pointer' : 'default',
-                    whiteSpace: 'nowrap'
-                  }}
+                  style={{ padding: '9px 15px', background: customCategory.trim() ? NAVY : BORDER, color: WHITE, border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
                 >
                   + Adicionar
                 </button>
               </div>
             </div>
 
-            {/* LISTA ESPELHADA DOS BLOCOS (LADO A LADO) */}
+            {/* Visualização Espelhada (Atual vs Target) com suporte a Subitens */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
               
-              {/* LADO ESQUERDO: CENÁRIO ATUAL */}
+              {/* CUSTO ATUAL (Com botão de Subitens) */}
               <div style={{ background: SLATE, borderRadius: 12, padding: '1.25rem', border: `1px solid ${BORDER}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <h4 style={{ fontSize: 13, fontWeight: 800, color: NAVY, margin: 0 }}>📊 Cost Breakdown Atual</h4>
-                  <span style={{ fontSize: 10, fontWeight: 700, background: WHITE, padding: '2px 8px', borderRadius: 4, color: MUTED, border: `1px solid ${BORDER}` }}>CENÁRIO REAL</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, background: WHITE, padding: '2px 8px', borderRadius: 4, color: MUTED }}>CENÁRIO REAL</span>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                  {blocks.length === 0 ? (
-                    <p style={{ fontSize: 12, color: MUTED, textAlign: 'center', padding: '1rem' }}>Nenhum bloco de custo adicionado.</p>
-                  ) : (
-                    blocks.map(b => (
-                      <div key={b.id}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                          <input
-                            type="text"
-                            value={b.name}
-                            onChange={e => handleUpdateBlockName(b.id, e.target.value)}
-                            style={{ background: 'transparent', border: 'none', fontSize: 11, fontWeight: 700, color: NAVY, width: '80%', outline: 'none' }}
-                          />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {blocks.map(b => (
+                    <div key={b.id} style={{ background: WHITE, padding: '10px', borderRadius: 8, border: `1px solid ${BORDER}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{b.name}</span>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button
+                            type="button"
+                            onClick={() => handleAddSubItem(b.id)}
+                            style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '2px 6px', cursor: 'pointer' }}
+                          >
+                            + Subitem / Ingrediente
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleRemoveBlock(b.id)}
-                            style={{ background: 'none', border: 'none', color: RED, fontSize: 12, cursor: 'pointer', padding: 0 }}
-                            title="Remover este bloco"
+                            style={{ background: 'none', border: 'none', color: RED, fontSize: 12, cursor: 'pointer' }}
                           >
                             ✕
                           </button>
                         </div>
+                      </div>
+
+                      {/* Lista de Subitens se existirem */}
+                      {b.subItems && b.subItems.length > 0 ? (
+                        <div style={{ marginBottom: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {b.subItems.map(sub => (
+                            <div key={sub.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: SLATE, padding: '4px 8px', borderRadius: 4, fontSize: 11 }}>
+                              <span>{sub.name} ({sub.quantity} un/kg x {brl(sub.unitCost)})</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontWeight: 700, color: NAVY }}>{brl(sub.totalCost)}</span>
+                                <button type="button" onClick={() => handleRemoveSubItem(b.id, sub.id)} style={{ color: RED, border: 'none', background: 'none', cursor: 'pointer' }}>✕</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
                         <input
                           type="number" step="0.01" placeholder="0.00"
                           value={b.currentCost || ''}
                           onChange={e => handleUpdateBlockValue(b.id, 'currentCost', e.target.value)}
-                          style={{ width: '100%', padding: '9px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 13, boxSizing: 'border-box' }}
+                          style={{ width: '100%', padding: '8px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: 12 }}
                         />
-                      </div>
-                    ))
-                  )}
+                      )}
+                    </div>
+                  ))}
                 </div>
 
-                {/* Resumo do Cenário Atual */}
-                <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: `1px solid ${BORDER}`, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: `1px solid ${BORDER}`, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
                   <div>
                     <p style={{ fontSize: 10, fontWeight: 700, color: MUTED, margin: 0 }}>CUSTO TOTAL</p>
                     <p style={{ fontSize: 14, fontWeight: 800, color: NAVY, margin: '2px 0 0' }}>{brl(curTotalCost)}</p>
@@ -478,52 +593,41 @@ export default function AiBreakdownPage() {
                     <p style={{ fontSize: 14, fontWeight: 800, color: curProfit >= 0 ? E : RED, margin: '2px 0 0' }}>{brl(curProfit)}</p>
                   </div>
                   <div>
-                    <p style={{ fontSize: 10, fontWeight: 700, color: MUTED, margin: 0 }}>MARKUP (%)</p>
-                    <p style={{ fontSize: 14, fontWeight: 800, color: NAVY, margin: '2px 0 0' }}>{curMarkup.toFixed(1)}%</p>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: MUTED, margin: 0 }}>MARKUP CALCULADO</p>
+                    <p style={{ fontSize: 14, fontWeight: 800, color: NAVY, margin: '2px 0 0' }}>{markupPercent}%</p>
                   </div>
                 </div>
               </div>
 
-              {/* LADO DIREITO: CENÁRIO TARGET (ESPELHADO) */}
+              {/* CENÁRIO TARGET */}
               <div style={{ background: '#F0FDF4', borderRadius: 12, padding: '1.25rem', border: `1.5px solid ${E}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <h4 style={{ fontSize: 13, fontWeight: 800, color: '#065F46', margin: 0 }}>🎯 Cost Breakdown Target</h4>
-                  <span style={{ fontSize: 10, fontWeight: 700, background: WHITE, padding: '2px 8px', borderRadius: 4, color: '#047857', border: '1px solid #A7F3D0' }}>ALVO DESEJADO</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, background: WHITE, padding: '2px 8px', borderRadius: 4, color: '#047857' }}>ALVO DESEJADO</span>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                  {blocks.length === 0 ? (
-                    <p style={{ fontSize: 12, color: MUTED, textAlign: 'center', padding: '1rem' }}>Nenhum bloco de custo adicionado.</p>
-                  ) : (
-                    blocks.map(b => (
-                      <div key={b.id}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: '#065F46' }}>TARGET {b.name.toUpperCase()}</span>
-                        </div>
-                        <input
-                          type="number" step="0.01" placeholder="0.00"
-                          value={b.targetCost || ''}
-                          onChange={e => handleUpdateBlockValue(b.id, 'targetCost', e.target.value)}
-                          style={{ width: '100%', padding: '9px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 13, boxSizing: 'border-box' }}
-                        />
-                      </div>
-                    ))
-                  )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {blocks.map(b => (
+                    <div key={b.id} style={{ background: WHITE, padding: '10px', borderRadius: 8, border: '1px solid #A7F3D0' }}>
+                      <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#065F46', marginBottom: 4 }}>TARGET {b.name.toUpperCase()}</span>
+                      <input
+                        type="number" step="0.01" placeholder="0.00"
+                        value={b.targetCost || ''}
+                        onChange={e => handleUpdateBlockValue(b.id, 'targetCost', e.target.value)}
+                        style={{ width: '100%', padding: '8px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: 12 }}
+                      />
+                    </div>
+                  ))}
                 </div>
 
-                {/* Resumo do Cenário Target */}
-                <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #A7F3D0', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #A7F3D0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <div>
                     <p style={{ fontSize: 10, fontWeight: 700, color: '#047857', margin: 0 }}>CUSTO ALVO</p>
                     <p style={{ fontSize: 14, fontWeight: 800, color: E, margin: '2px 0 0' }}>{brl(tarTotalCost)}</p>
                   </div>
                   <div>
-                    <p style={{ fontSize: 10, fontWeight: 700, color: '#047857', margin: 0 }}>LUCRO TARGET</p>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: '#047857', margin: 0 }}>LUCRO TARGET POTENCIAL</p>
                     <p style={{ fontSize: 14, fontWeight: 800, color: tarProfit >= 0 ? E : RED, margin: '2px 0 0' }}>{brl(tarProfit)}</p>
-                  </div>
-                  <div>
-                    <p style={{ fontSize: 10, fontWeight: 700, color: '#047857', margin: 0 }}>MARKUP TARGET</p>
-                    <p style={{ fontSize: 14, fontWeight: 800, color: E, margin: '2px 0 0' }}>{tarMarkup.toFixed(1)}%</p>
                   </div>
                 </div>
               </div>
@@ -531,7 +635,7 @@ export default function AiBreakdownPage() {
             </div>
           </div>
 
-          {/* OPORTUNIDADE DE SAVING DA ANÁLISE */}
+          {/* Resumo do GAP */}
           <div style={{ background: '#ECFDF5', border: '1.5px solid #A7F3D0', borderRadius: 14, padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <p style={{ fontSize: 11, fontWeight: 800, color: '#065F46', letterSpacing: '0.07em', textTransform: 'uppercase', margin: 0 }}>
@@ -546,15 +650,9 @@ export default function AiBreakdownPage() {
               <p style={{ fontSize: 24, fontWeight: 800, color: gapSaving > 0 ? E : MUTED, margin: 0 }}>
                 {gapSaving > 0 ? brl(gapSaving) : 'R$ 0,00'}
               </p>
-              {gapSaving > 0 && curTotalCost > 0 && (
-                <p style={{ fontSize: 11, fontWeight: 700, color: '#065F46', margin: 0 }}>
-                  ({((gapSaving / curTotalCost) * 100).toFixed(1)}% de redução de custos)
-                </p>
-              )}
             </div>
           </div>
 
-          {/* Botões de Ação */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             {selectedId ? (
               <button
@@ -569,16 +667,14 @@ export default function AiBreakdownPage() {
             <button
               type="submit"
               disabled={salvando}
-              style={{ padding: '12px 28px', background: E, border: 'none', borderRadius: 8, color: WHITE, fontSize: 14, fontWeight: 800, cursor: salvando ? 'wait' : 'pointer', boxShadow: '0 2px 10px rgba(16,185,129,0.3)' }}
+              style={{ padding: '12px 28px', background: E, border: 'none', borderRadius: 8, color: WHITE, fontSize: 14, fontWeight: 800, cursor: salvando ? 'wait' : 'pointer' }}
             >
-              {salvando ? 'Salvando...' : selectedId ? 'Atualizar na Biblioteca' : 'Salvar na Biblioteca de Produtos'}
+              {salvando ? 'Salvando...' : 'Salvar na Biblioteca de Produtos'}
             </button>
           </div>
 
         </form>
-
       </div>
-      <style>{`* { box-sizing: border-box; }`}</style>
     </div>
   )
 }
