@@ -90,6 +90,7 @@ export async function registerCompanyOnDemand(data: RegisterCompanyDTO) {
 
     revalidatePath('/dashboard')
     revalidatePath('/dashboard/empresa')
+    revalidatePath('/dashboard/empresa/configuracoes')
     revalidatePath('/dashboard/closer')
     return { success: true, organization: org }
   } catch (error: unknown) {
@@ -115,5 +116,73 @@ export async function activateCloserProfileOnDemand(userId: string) {
   } catch (error) {
     console.error('Erro ao ativar perfil de closer:', error)
     return { success: false, error: 'Falha ao ativar perfil de closer.' }
+  }
+}
+
+// 4. Buscar dados da Empresa para a página de Configurações
+export async function getCompanyData(userId: string) {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        organizations: {
+          include: { organization: true },
+        },
+      },
+    })
+
+    if (!user || user.organizations.length === 0) {
+      return { success: false, error: 'Empresa não encontrada.' }
+    }
+
+    return {
+      success: true,
+      organization: user.organizations[0].organization,
+    }
+  } catch (error) {
+    console.error('Erro ao buscar dados da empresa:', error)
+    return { success: false, error: 'Erro ao carregar configurações da empresa.' }
+  }
+}
+
+// 5. Atualizar dados da Empresa
+export async function updateCompanyData(data: {
+  organizationId: string
+  companyName: string
+  cnpj?: string
+  faturamentoAnual?: string
+  gastoComprasAno?: string
+  categoriasPraticadas?: string[]
+  escopoMercado?: string
+  moedasUtilizadas?: string[]
+  segmentoEmpresa?: string
+}) {
+  try {
+    const updatedOrg = await prisma.organization.update({
+      where: { id: data.organizationId },
+      data: {
+        name: data.companyName,
+        cnpj: data.cnpj || null,
+        faturamentoAnual: data.faturamentoAnual || null,
+        gastoComprasAno: data.gastoComprasAno || null,
+        categoriasPraticadas: data.categoriasPraticadas ? data.categoriasPraticadas.join(', ') : null,
+        escopoMercado: data.escopoMercado || 'NACIONAL',
+        moedasUtilizadas: data.moedasUtilizadas ? data.moedasUtilizadas.join(', ') : 'BRL',
+        segmentoEmpresa: data.segmentoEmpresa || 'COMERCIO',
+      },
+    })
+
+    revalidatePath('/dashboard')
+    revalidatePath('/dashboard/empresa')
+    revalidatePath('/dashboard/empresa/configuracoes')
+    revalidatePath('/dashboard/closer')
+
+    return { success: true, organization: updatedOrg }
+  } catch (error: any) {
+    console.error('Erro ao atualizar empresa:', error)
+    return {
+      success: false,
+      error: error.message || 'Erro ao atualizar configurações da empresa.',
+    }
   }
 }
