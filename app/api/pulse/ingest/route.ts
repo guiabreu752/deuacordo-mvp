@@ -4,11 +4,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import { prisma } from '@/lib/prisma'
 
 const parser = new Parser()
-
-// Inicializa a API do Gemini (Gratuita) usando a chave de ambiente
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
 
-// Mapeamento de termos para categorização automática B2B
 const CATEGORIES_MAP: Record<string, string[]> = {
   'Aço & Metais': ['aço', 'metalurgia', 'minério', 'usinagem', 'siderurgia', 'ferro', 'inoxidável', 'metal'],
   'Energia & Câmbio': ['dólar', 'câmbio', 'energia', 'petróleo', 'combustível', 'inflação', 'selic', 'tarifa'],
@@ -18,7 +15,6 @@ const CATEGORIES_MAP: Record<string, string[]> = {
 
 export async function GET() {
   try {
-    // 1. Feeds RSS Públicos do Google News
     const feedUrls = [
       'https://news.google.com/rss/search?q=geopolitica+negocios+comercio+exterior&hl=pt-BR&gl=BR&ceid=BR:pt-419',
       'https://news.google.com/rss/search?q=commodities+aço+logistica+industria&hl=pt-BR&gl=BR&ceid=BR:pt-419'
@@ -30,11 +26,9 @@ export async function GET() {
     for (const url of feedUrls) {
       const feed = await parser.parseURL(url)
 
-      // Processa até 3 notícias por rodada para garantir rapidez e limite de quota
       for (const item of feed.items.slice(0, 3)) {
         if (!item.link || !item.title) continue
 
-        // Evita duplicidade
         const exists = await prisma.newsArticle.findFirst({
           where: { sourceUrl: item.link }
         })
@@ -42,40 +36,40 @@ export async function GET() {
         if (exists) continue
 
         const fonteOriginal = item.creator || 'Google News'
-        const textoBase = `${item.title}. ${item.contentSnippet || ''}`
+        const textoBase = `${item.title}.${item.contentSnippet || ''}`
 
-        // 2. Prompt estruturado para a IA expandir a notícia para post de blog completo
         const promptIA = `
-          Você é um jornalista sênior de negócios B2B e geopolítica para o portal "DeuAcordo Pulse".
-          Com base na seguinte manchete e resumo: "${textoBase}", escreva um post de blog informativo e inédito.
+          Você é um jornalista sênior de negócios B2B e geopolítica do portal "DeuAcordo Pulse".
+          Com base nesta manchete e fatos: "${textoBase}", escreva um post de blog informativo, inédito e completo em português.
 
-          Retorne ESTRITAMENTE um objeto JSON válido (sem marcação markdown adicional) com o seguinte formato:
+          Retorne ESTRITAMENTE um objeto JSON válido (sem marcação markdown, sem \`\`\`json) com o seguinte formato exato:
           {
-            "titulo": "Um título atraente e profissional reescrito com palavras-chave de SEO",
-            "conteudoCompleto": "Escreva de 3 a 4 parágrafos bem explicativos contextualizando o fato, o impacto econômico e o cenário geopolítico atual. Sem plágio.",
-            "impactoB2B": "1 ou 2 frases explicando objetivamente como isso afeta custos, negociações ou suprimentos de empresas B2B no Brasil."
+            "titulo": "Título atraente e profissional reescrito para SEO",
+            "conteudoCompleto": "Escreva um texto longo de 3 a 4 parágrafos explicativos detalhando o fato, o impacto econômico e o contexto geopolítico.",
+            "impactoB2B": "Explicar em 2 frases objetivas como isso afeta custos, insumos e negociações B2B no Brasil."
           }
         `
 
         let artigoIA = {
           titulo: item.title,
-          conteudoCompleto: item.contentSnippet || item.title,
-          impactoB2B: 'Impacto em análise pela equipe de inteligência de mercado.'
+          conteudoCompleto: `${item.title}. O cenário atual exige atenção estratégica dos gestores B2B para mitigar riscos na cadeia de suprimentos e ajustar margens operacionais. Acompanhe os desdobramentos de mercado diretamente na plataforma DeuAcordo.`,
+          impactoB2B: 'Impacto em análise pela equipe de inteligência de mercado B2B.'
         }
 
         try {
           if (process.env.GEMINI_API_KEY) {
             const result = await model.generateContent(promptIA)
             const textResponse = result.response.text()
-            // Limpa formatações JSON do Markdown se houver
             const cleanJson = textResponse.replace(/```json/g, '').replace(/```/g, '').trim()
-            artigoIA = JSON.parse(cleanJson)
+            const parsed = JSON.parse(cleanJson)
+            if (parsed.titulo && parsed.conteudoCompleto) {
+              artigoIA = parsed
+            }
           }
         } catch (err) {
-          console.warn('Falha na resposta da IA, usando conteúdo base:', err)
+          console.warn('IA indisponível ou falha no Parse JSON, aplicando texto expansivo padrão:', err)
         }
 
-        // Categorização
         const fullText = `${artigoIA.titulo} ${artigoIA.conteudoCompleto}`.toLowerCase()
         const matchedCategories: string[] = []
 
@@ -94,12 +88,11 @@ export async function GET() {
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/(^-|-$)+/g, '')
 
-        // 3. Salva no Supabase via Prisma
         const article = await prisma.newsArticle.create({
           data: {
             title: artigoIA.titulo,
             slug: `${slug}-${Date.now().toString().slice(-4)}`,
-            summary: artigoIA.conteudoCompleto, // Texto expandido e reescrito
+            summary: artigoIA.conteudoCompleto, // Texto longo gravado no banco
             impactAnalysis: artigoIA.impactoB2B,
             sourceName: fonteOriginal,
             sourceUrl: item.link,
@@ -107,7 +100,6 @@ export async function GET() {
           }
         })
 
-        // Conecta categorias
         for (const catName of matchedCategories) {
           const catSlug = catName.toLowerCase().replace(/[^a-z0-9]+/g, '-')
 
