@@ -20,17 +20,17 @@ const RED    = '#EF4444'
 
 // ── Lista Completa de Produtos da Plataforma ────────────────
 const ECOSSISTEMA_PRODUTOS = [
-  { id: 'deal-desk',    name: 'Deal Desk',     icon: '🤝', active: true,  desc: 'Centralizador e pipeline visual' },
-  { id: 'ai-breakdown', name: 'AI Breakdown',  icon: '🤖', active: false, desc: 'Desfragmentador e leitor de minutas' },
-  { id: 'auction',      name: 'Auction',       icon: '⚡', active: false, desc: 'Leilão reverso ao vivo' },
-  { id: 'benchmark',    name: 'Benchmark',     icon: '📊', active: false, desc: 'Inteligência comparativa de preços' },
-  { id: 'legal',        name: 'Legal',         icon: '⚖️', active: false, desc: 'Conformidade e minutas automáticas' },
-  { id: 'risk',         name: 'Risk',          icon: '🛡️', active: false, desc: 'Score de risco e homologação' },
-  { id: 'matrix',       name: 'Matrix',        icon: '📐', active: false, desc: 'Matriz de decisão ponderada' },
-  { id: 'pulse',        name: 'Pulse',         icon: '📈', active: false, desc: 'Dashboard executivo em tempo real' },
-  { id: 'route',        name: 'Route',         icon: '🔀', active: false, desc: 'Roteamento de aprovações' },
-  { id: 'club',         name: 'Club',          icon: '💎', active: false, desc: 'Comunidade e rede VIP' },
-  { id: 'academy',      name: 'Academy',       icon: '🎓', active: false, desc: 'Plataforma LMS de capacitação' },
+  { id: 'deal-desk',    name: 'Deal Desk',     icon: '🤝', active: true,  href: '/dashboard', desc: 'Centralizador e pipeline visual' },
+  { id: 'ai-breakdown', name: 'AI Breakdown',  icon: '🤖', active: true,  href: '/dashboard/ai-breakdown', desc: 'Desfragmentador e breakdown de custos espelhado' },
+  { id: 'auction',      name: 'Auction',       icon: '⚡', active: false, href: '#', desc: 'Leilão reverso ao vivo' },
+  { id: 'benchmark',    name: 'Benchmark',     icon: '📊', active: false, href: '#', desc: 'Inteligência comparativa de preços' },
+  { id: 'legal',        name: 'Legal',         icon: '⚖️', active: false, href: '#', desc: 'Conformidade e minutas automáticas' },
+  { id: 'risk',         name: 'Risk',          icon: '🛡️', active: false, href: '#', desc: 'Score de risco e homologação' },
+  { id: 'matrix',       name: 'Matrix',        icon: '📐', active: false, href: '#', desc: 'Matriz de decisão ponderada' },
+  { id: 'pulse',        name: 'Pulse',         icon: '📈', active: false, href: '#', desc: 'Dashboard executivo em tempo real' },
+  { id: 'route',        name: 'Route',         icon: '🔀', active: false, href: '#', desc: 'Roteamento de aprovações' },
+  { id: 'club',         name: 'Club',          icon: '💎', active: false, href: '#', desc: 'Comunidade e rede VIP' },
+  { id: 'academy',      name: 'Academy',       icon: '🎓', active: false, href: '#', desc: 'Plataforma LMS de capacitação' },
 ]
 
 // ── Helpers de Formatação ────────────────────────────────────
@@ -349,7 +349,7 @@ export default function DashboardHubPage() {
                     opacity: p.active ? 1 : 0.75,
                     cursor: p.active ? 'pointer' : 'default'
                   }}
-                  onClick={() => p.active && router.push('/dashboard')}
+                  onClick={() => p.active && router.push(p.href)}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 15 }}>{p.icon}</span>
@@ -451,7 +451,7 @@ export default function DashboardHubPage() {
                   </div>
                   <h3 style={{ fontSize: 17, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Área da Empresa</h3>
                   <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: '0 0 1.25rem' }}>
-                    Abra demandas de compra para produtos e insumos. Nossos Closers negociam para sua empresa com 20% de Success Fee[cite: 17].
+                    Abra demandas de compra para produtos e insumos. Nossos Closers negociam para sua empresa com 20% de Success Fee.
                   </p>
                 </div>
 
@@ -484,7 +484,7 @@ export default function DashboardHubPage() {
                   </div>
                   <h3 style={{ fontSize: 17, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Cockpit do Closer</h3>
                   <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: '0 0 1.25rem' }}>
-                    Assuma mesas de negociação abertas por empresas, busque fornecedores melhores e receba 70% de comissão sobre cada saving[cite: 17].
+                    Assuma mesas de negociação abertas por empresas, busque fornecedores melhores e receba 70% de comissão sobre cada saving.
                   </p>
                 </div>
 
@@ -620,13 +620,13 @@ export default function DashboardHubPage() {
           <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 480, padding: '2rem', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
             <h3 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Ativar Perfil de Closer / Negociador</h3>
             <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1rem', lineHeight: 1.4 }}>
-              Ao ativar este perfil, você entra para a rede de negociadores da DeuAcordo.com com direito a <strong>70% de comissão</strong> sobre os fees de savings gerados[cite: 17].
+              Ao ativar este perfil, você entra para a rede de negociadores da DeuAcordo.com com direito a <strong>70% de comissão</strong> sobre os fees de savings gerados.
             </p>
 
             <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '1rem', marginBottom: '1.25rem' }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: '#92400E', margin: '0 0 4px' }}>✓ MODELO SUCCESS FEE</p>
               <p style={{ fontSize: 12, color: '#78350F', margin: 0 }}>
-                Sem cobrança mensal ou custo para ingressar. Ganhe proporcionalmente ao resultado entregue ao cliente[cite: 17].
+                Sem cobrança mensal ou custo para ingressar. Ganhe proporcionalmente ao resultado entregue ao cliente.
               </p>
             </div>
 

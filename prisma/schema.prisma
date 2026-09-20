@@ -41,8 +41,9 @@ model Organization {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  users UsersOnOrganizations[]
-  deals Deal[]
+  users          UsersOnOrganizations[]
+  deals          Deal[]
+  costBreakdowns CostBreakdown[]
 
   @@map("organizations")
 }
@@ -100,6 +101,41 @@ model Deal {
 }
 
 // --------------------------------------
+// MÓDULO 2: AI BREAKDOWN / DEUACORDO BREAKDOWN (MVP)
+// --------------------------------------
+
+model CostBreakdown {
+  id           String @id @default(cuid())
+  productName  String // Nome do produto/serviço analisado
+  sellingPrice Float  // Preço de venda praticado no mercado
+
+  // ---- CENÁRIO ATUAL (CUSTOS MANUAIS) ----
+  rawMaterialCost Float  @default(0) // Insumos / Matéria-Prima
+  laborCost       Float  @default(0) // Mão de obra
+  energyCost      Float  @default(0) // Energia / Utilidades
+  logisticsCost   Float  @default(0) // Frete / Impostos / Outros
+  currentMarkup   Float? // Markup calculado ((Preço - CustoTotal) / CustoTotal)
+  currentProfit   Float? // Lucro líquido/bruto em R$
+
+  // ---- CENÁRIO TARGET (DESEJADO / ESPELHADO) ----
+  targetRawMaterialCost Float  @default(0)
+  targetLaborCost       Float  @default(0)
+  targetEnergyCost      Float  @default(0)
+  targetLogisticsCost   Float  @default(0)
+  targetSellingPrice    Float?
+  targetMarkup          Float?
+  targetProfit          Float?
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("cost_breakdowns")
+}
+
+// --------------------------------------
 // MÓDULO 11: DEUACORDO ACADEMY (AFILIADOS)
 // --------------------------------------
 
@@ -131,25 +167,25 @@ model NewsCategory {
   slug      String   @unique
   createdAt DateTime @default(now())
 
-  articles  NewsArticleOnCategories[]
+  articles NewsArticleOnCategories[]
 
   @@map("news_categories")
 }
 
 model NewsArticle {
-  id              String   @id @default(cuid())
-  title           String
-  slug            String   @unique
-  summary         String   @db.Text
-  impactAnalysis  String?  @db.Text // Análise visual/exclusiva para versão PAGA
-  sourceName      String   // ex: "Reuters", "Valor Econômico", "Google News"
-  sourceUrl       String   // URL da notícia original
-  imageUrl        String?
-  isFeatured      Boolean  @default(false)
-  publishedAt     DateTime @default(now())
-  createdAt       DateTime @default(now())
+  id             String   @id @default(cuid())
+  title          String
+  slug           String   @unique
+  summary        String   @db.Text
+  impactAnalysis String?  @db.Text // Análise visual/exclusiva para versão PAGA
+  sourceName     String   // ex: "Reuters", "Valor Econômico", "Google News"
+  sourceUrl      String   // URL da notícia original
+  imageUrl       String?
+  isFeatured     Boolean  @default(false)
+  publishedAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
 
-  categories      NewsArticleOnCategories[]
+  categories NewsArticleOnCategories[]
 
   @@map("news_articles")
 }
