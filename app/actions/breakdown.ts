@@ -47,14 +47,25 @@ export async function getBreakdownsByOrganization(organizationId: string) {
   }
 }
 
-// 2. Salvar/Atualizar Breakdown com suporte a blocos e subitens
+// 2. Salvar/Atualizar Breakdown garantindo a existência da Organização
 export async function saveCostBreakdown(data: SaveCostBreakdownDTO) {
   try {
     if (!data.productName.trim()) {
       return { success: false, error: 'O nome do produto é obrigatório.' }
     }
 
-    // Calcular custo total somando todos os blocos
+    // ── Garantir que a organização exista na tabela `organizations` ──
+    const org = await prisma.organization.upsert({
+      where: { id: data.organizationId },
+      update: {},
+      create: {
+        id: data.organizationId,
+        name: 'Empresa Padrão',
+        slug: `org-${data.organizationId.slice(0, 8)}`,
+      },
+    })
+
+    // Calcular custos
     const totalCurrentCost = data.blocks.reduce((acc, b) => {
       if (b.subItems && b.subItems.length > 0) {
         return acc + b.subItems.reduce((sAcc, sub) => sAcc + (Number(sub.totalCost) || 0), 0)
@@ -101,7 +112,7 @@ export async function saveCostBreakdown(data: SaveCostBreakdownDTO) {
           targetProfit,
           targetMarkup,
           blocksJson,
-          organizationId: data.organizationId,
+          organizationId: org.id,
         },
       })
     }
