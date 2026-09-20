@@ -16,12 +16,10 @@ const SLATE  = '#F8FAFC'
 
 type Tab = 'entrar' | 'criar'
 
-// ── Redirect Unificado para o Hub Central ──────────────────────
 function redirectToHub(router: ReturnType<typeof useRouter>) {
   router.replace('/dashboard')
 }
 
-// ── Mensagens de erro traduzidas ──────────────────────────────
 function traduzirErro(msg: string): string {
   if (msg.includes('Invalid login credentials'))
     return 'E-mail ou senha incorretos. Verifique e tente novamente.'
@@ -40,7 +38,6 @@ function traduzirErro(msg: string): string {
   return msg
 }
 
-// ── Campo de formulário ───────────────────────────────────────
 function Campo({
   label, id, type = 'text', value, onChange, placeholder, autoComplete,
 }: {
@@ -74,7 +71,6 @@ function Campo({
   )
 }
 
-// ── Alerta ────────────────────────────────────────────────────
 function Alerta({ tipo, texto }: { tipo: 'erro' | 'sucesso'; texto: string }) {
   const isErro = tipo === 'erro'
   return (
@@ -92,7 +88,6 @@ function Alerta({ tipo, texto }: { tipo: 'erro' | 'sucesso'; texto: string }) {
   )
 }
 
-// ── Página Principal Acesso Único ─────────────────────────────
 export default function LoginPage() {
   const router = useRouter()
 
@@ -105,7 +100,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [checando, setChecando] = useState(true)
 
-  // Se já está logado, redireciona para o Hub Central
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
@@ -118,7 +112,6 @@ export default function LoginPage() {
 
   function limpar() { setErro(''); setSucesso('') }
 
-  // ── Login unificado com redirect para o Hub ────────────────
   async function entrar(e: React.FormEvent) {
     e.preventDefault(); limpar()
     if (!email || !senha) { setErro('Preencha e-mail e senha.'); return }
@@ -139,7 +132,6 @@ export default function LoginPage() {
     }
   }
 
-  // ── Cadastro Único e Direto ───────────────────────────────
   async function criar(e: React.FormEvent) {
     e.preventDefault(); limpar()
     if (!nome.trim())     { setErro('Informe seu nome completo.'); return }
@@ -157,7 +149,7 @@ export default function LoginPage() {
         },
       })
       if (error) throw error
-      setSucesso('Conta criada com sucesso! Faça login para aceder ao Hub.')
+      setSucesso('Conta criada com sucesso! Faça login para acessar o Hub.')
       setTab('entrar')
       setSenha('')
     } catch (err: unknown) {
@@ -184,7 +176,7 @@ export default function LoginPage() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', fontFamily: 'Inter, system-ui, sans-serif', background: SLATE }}>
 
-      {/* ── Branding (lado esquerdo) ── */}
+      {/* Lado esquerdo: Branding */}
       <div style={{
         flex: 1, padding: '3rem', display: 'flex', flexDirection: 'column',
         justifyContent: 'space-between', background: WHITE, borderRight: `1px solid ${BORDER}`,
@@ -230,11 +222,10 @@ export default function LoginPage() {
         <p style={{ fontSize: 12, color: '#CBD5E1' }}>© {new Date().getFullYear()} DeuAcordo.com</p>
       </div>
 
-      {/* ── Formulário (lado direito) ── */}
+      {/* Lado direito: Formulário sem seleção de perfil */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
         <div style={{ width: '100%', maxWidth: 440 }}>
 
-          {/* Tabs Entrar / Criar */}
           <div style={{
             display: 'flex', background: WHITE, border: `1px solid ${BORDER}`,
             borderRadius: 10, padding: 4, gap: 4, marginBottom: '2rem',
@@ -256,7 +247,6 @@ export default function LoginPage() {
             border: `1px solid ${BORDER}`, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.04)',
           }}>
 
-            {/* ── ABA ENTRAR ── */}
             {tab === 'entrar' && (
               <>
                 <h2 style={{ fontSize: 22, fontWeight: 800, color: NAVY, margin: '0 0 0.25rem' }}>Bem-vindo de volta.</h2>
@@ -296,7 +286,6 @@ export default function LoginPage() {
               </>
             )}
 
-            {/* ── ABA CRIAR ── */}
             {tab === 'criar' && (
               <>
                 <h2 style={{ fontSize: 22, fontWeight: 800, color: NAVY, margin: '0 0 0.25rem' }}>Criar sua conta.</h2>
