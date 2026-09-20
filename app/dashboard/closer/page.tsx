@@ -62,7 +62,6 @@ function labelStatus(s: string) {
   return m[s] || s
 }
 
-// ── Sub-componentes ───────────────────────────────────────────
 function Badge({ text, bg, color }: { text: string; bg: string; color: string }) {
   return (
     <span style={{
@@ -109,7 +108,7 @@ function Spinner() {
   )
 }
 
-// ── Modal Enviar Proposta com cálculo de quantidade ─────────
+// ── Modal Enviar Proposta ─────────────────────────────────────
 function ModalProposta({ mesa, onClose, onEnviar, enviando }: {
   mesa: any
   onClose: () => void
@@ -246,7 +245,7 @@ function ModalProposta({ mesa, onClose, onEnviar, enviando }: {
   )
 }
 
-// ── Modal Detalhes (Visão Closer) ─────────────────────────────
+// ── Modal Detalhes com Perfil Anônimo Qualificado ─────────────
 function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
   mesa: any
   onClose: () => void
@@ -260,6 +259,8 @@ function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
   const comissao   = calcComissao(saving)
   const pctSaving  = targetTotal > 0 ? ((saving / targetTotal) * 100).toFixed(1) : '0'
   const podeEnviar = mesa.status === 'IN_NEGOTIATION'
+
+  const org = mesa.organization || {}
 
   return (
     <div
@@ -279,7 +280,29 @@ function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: MUTED, padding: 0, flexShrink: 0 }}>✕</button>
         </div>
 
-        <div style={{ padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div style={{ padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+          {/* Panorama de Qualificação da Empresa (Visão Anônima para o Closer) */}
+          <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 12, padding: '1.1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <p style={{ fontSize: 11, fontWeight: 800, color: '#065F46', letterSpacing: '0.08em', textTransform: 'uppercase', margin: 0 }}>
+                🔒 DEMANDANTE (ANÔNIMO QUALIFICADO)
+              </p>
+              <span style={{ fontSize: 10, background: '#D1FAE5', color: '#047857', padding: '2px 7px', borderRadius: 4, fontWeight: 700 }}>
+                Perfil Verificado
+              </span>
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', fontSize: 12 }}>
+              <div><span style={{ color: MUTED }}>Segmento:</span> <strong style={{ color: NAVY }}>{org.segmentoEmpresa || 'Comércio'}</strong></div>
+              <div><span style={{ color: MUTED }}>Faturamento/Ano:</span> <strong style={{ color: NAVY }}>{org.faturamentoAnual || 'Confidencial'}</strong></div>
+              <div><span style={{ color: MUTED }}>Compras/Ano:</span> <strong style={{ color: NAVY }}>{org.gastoComprasAno || 'Confidencial'}</strong></div>
+              <div><span style={{ color: MUTED }}>Mercado:</span> <strong style={{ color: NAVY }}>{org.escopoMercado || 'Nacional'}</strong></div>
+              {org.categoriasPraticadas && (
+                <div style={{ gridColumn: '1 / -1' }}><span style={{ color: MUTED }}>Categorias:</span> <strong style={{ color: NAVY }}>{org.categoriasPraticadas}</strong></div>
+              )}
+            </div>
+          </div>
 
           <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '1.25rem', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
             {[
@@ -298,11 +321,10 @@ function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
             {[
               { label: 'Aberta em', value: new Date(mesa.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }) },
               { label: 'Quantidade solicitada', value: `${qty} unidades` },
-              { label: 'Empresa', value: mesa.organization?.name || 'Cliente B2B' },
             ].map(({ label, value }) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: `1px solid ${BORDER}`, fontSize: 13 }}>
                 <span style={{ color: MUTED }}>{label}</span>
-                <span style={{ color: NAVY, fontWeight: 600, textAlign: 'right', maxWidth: '55%' }}>{value}</span>
+                <span style={{ color: NAVY, fontWeight: 600 }}>{value}</span>
               </div>
             ))}
           </div>
@@ -320,21 +342,6 @@ function ModalDetalhes({ mesa, onClose, onEnviarProposta }: {
             </button>
           )}
 
-          {mesa.status === 'PENDING_APPROVAL' && (
-            <div style={{ background: '#FEF9C3', border: '1px solid #FCD34D', borderRadius: 8, padding: '0.9rem', textAlign: 'center' }}>
-              <p style={{ fontSize: 13, color: '#92400E', margin: 0, fontWeight: 600 }}>
-                ⏳ Proposta enviada — aguardando aprovação do cliente para liberar sua comissão de {brl(comissao)}.
-              </p>
-            </div>
-          )}
-
-          {mesa.status === 'APPROVED' && (
-            <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 8, padding: '0.9rem', textAlign: 'center' }}>
-              <p style={{ fontSize: 13, color: '#065F46', margin: 0, fontWeight: 700 }}>
-                ✅ Mesa concluída! Comissão de {brl(comissao)} liberada para saque.
-              </p>
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -440,7 +447,6 @@ export default function DashboardCloserPage() {
         zIndex: 100
       }}>
         <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 65px)' }}>
-          {/* Logo Branding */}
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
             <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
               <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 32, width: 'auto', objectFit: 'contain' }} />
@@ -450,7 +456,6 @@ export default function DashboardCloserPage() {
             </Link>
           </div>
 
-          {/* Menu de Produtos B2B */}
           <div style={{ padding: '1.25rem 1rem', overflowY: 'auto', flex: 1 }}>
             <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12, paddingLeft: 8 }}>
               PRODUTOS B2B DEUACORDO
@@ -493,7 +498,6 @@ export default function DashboardCloserPage() {
           </div>
         </div>
 
-        {/* Rodapé da Sidebar */}
         <div style={{ padding: '1rem', borderTop: `1px solid ${BORDER}`, background: SLATE, flexShrink: 0, height: 65, boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ overflow: 'hidden', paddingRight: 8 }}>
@@ -518,7 +522,6 @@ export default function DashboardCloserPage() {
       {/* ── CONTEÚDO PRINCIPAL (DIREITA) ────────────────────────── */}
       <div style={{ marginLeft: 270, flex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
 
-        {/* Header Superior */}
         <header style={{ background: WHITE, borderBottom: `1px solid ${BORDER}`, padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -542,20 +545,6 @@ export default function DashboardCloserPage() {
         </header>
 
         <main style={{ padding: '2rem', maxWidth: 1200, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-
-          {comissoesLiberadas > 0 && (
-            <div style={{
-              background: '#FFFBEB', border: '1.5px solid #FCD34D', borderRadius: 10,
-              padding: '0.9rem 1.25rem', marginBottom: '1.5rem',
-              display: 'flex', alignItems: 'center', gap: 10,
-            }}>
-              <span style={{ fontSize: 20 }}>💰</span>
-              <p style={{ fontSize: 13, color: '#92400E', margin: 0 }}>
-                <strong>{brl(comissoesLiberadas)}</strong> em comissões disponíveis para saque.
-                {' '}Mesas concluídas: {mesasConc}.
-              </p>
-            </div>
-          )}
 
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
             <MetricCard
@@ -607,8 +596,8 @@ export default function DashboardCloserPage() {
 
           <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 100px 130px 150px 165px 130px', padding: '10px 16px', background: SLATE, borderBottom: `1px solid ${BORDER}` }}>
-              {['CÓDIGO', 'PRODUTO', 'QTD', 'BASELINE', 'COMISSÃO EST.', 'STATUS', 'AÇÃO'].map(c => (
+            <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 180px 100px 130px 140px 120px', padding: '10px 16px', background: SLATE, borderBottom: `1px solid ${BORDER}` }}>
+              {['CÓDIGO', 'PRODUTO', 'DEMANDANTE (ANÔNIMO)', 'QTD', 'BASELINE', 'COMISSÃO EST.', 'AÇÃO'].map(c => (
                 <span key={c} style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: '0.07em' }}>{c}</span>
               ))}
             </div>
@@ -623,18 +612,18 @@ export default function DashboardCloserPage() {
             )}
 
             {mesasFiltradas.map((mesa, i) => {
-              const sc         = statusCfg(mesa.status)
               const qty        = mesa.quantity || 1
               const targetUnit = mesa.targetValue ?? 0
               const comissao   = calcComissao(mesa.savingValue ?? 0)
               const podeEnviar = mesa.status === 'IN_NEGOTIATION'
+              const org        = mesa.organization || {}
 
               return (
                 <div
                   key={mesa.id}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '120px 1fr 100px 130px 150px 165px 130px',
+                    gridTemplateColumns: '120px 1fr 180px 100px 130px 140px 120px',
                     padding: '14px 16px',
                     borderBottom: i === mesasFiltradas.length - 1 ? 'none' : `1px solid ${BORDER}`,
                     alignItems: 'center',
@@ -653,6 +642,13 @@ export default function DashboardCloserPage() {
                     {mesa.title}
                   </span>
 
+                  {/* Badge de Empresa Anônima para o Closer */}
+                  <div>
+                    <span style={{ fontSize: 11, background: '#F1F5F9', color: NAVY, fontWeight: 700, padding: '3px 8px', borderRadius: 6, display: 'inline-block' }}>
+                      🏢 {org.segmentoEmpresa || 'Empresa B2B'}
+                    </span>
+                  </div>
+
                   <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>
                     {qty} un
                   </span>
@@ -665,24 +661,12 @@ export default function DashboardCloserPage() {
                     {comissao > 0 ? brl(comissao) : '—'}
                   </span>
 
-                  <Badge text={labelStatus(mesa.status)} bg={sc.bg} color={sc.color} />
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <button
-                      onClick={e => { e.stopPropagation(); setMesaDetalhe(mesa) }}
-                      style={{
-                        padding: '5px 10px', background: 'transparent',
-                        border: `1.5px solid ${BORDER}`, borderRadius: 6,
-                        fontSize: 11, fontWeight: 700, color: NAVY, cursor: 'pointer', whiteSpace: 'nowrap',
-                      }}
-                    >
-                      Ver Detalhes →
-                    </button>
+                  <div style={{ display: 'flex', gap: 4 }}>
                     {podeEnviar && (
                       <button
                         onClick={e => { e.stopPropagation(); setMesaProposta(mesa) }}
                         style={{
-                          padding: '5px 10px', background: AMBER,
+                          padding: '6px 12px', background: AMBER,
                           border: 'none', borderRadius: 6,
                           fontSize: 11, fontWeight: 700, color: NAVY, cursor: 'pointer', whiteSpace: 'nowrap',
                         }}

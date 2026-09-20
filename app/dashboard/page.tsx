@@ -102,22 +102,34 @@ export default function DashboardHubPage() {
   const [erroFetch, setErroFetch]     = useState('')
   const [saindo, setSaindo]           = useState(false)
 
-  // Estado dos Perfis do Usuário (Onboarding por demanda)
+  // Estado dos Perfis do Usuário
   const [hasCompany, setHasCompany]   = useState(false)
+  const [orgData, setOrgData]         = useState<any>(null)
   const [isCloser, setIsCloser]       = useState(false)
 
   // Modais de Cadastro On-Demand
   const [showCompanyModal, setShowCompanyModal] = useState(false)
   const [showCloserModal, setShowCloserModal]   = useState(false)
-  const [companyName, setCompanyName]           = useState('')
   const [submittingOnboarding, setSubmittingOnboarding] = useState(false)
 
-  // Carregar dados e perfil do banco de dados (Buscando apenas do usuário)
+  // Formulário Completo de Qualificação B2B
+  const [formCompany, setFormCompany] = useState({
+    companyName: '',
+    cnpj: '',
+    faturamentoAnual: 'R$ 4.8Mi a R$ 50Mi (Média)',
+    gastoComprasAno: 'R$ 500k a R$ 2Mi/ano',
+    segmentoEmpresa: 'COMERCIO',
+    escopoMercado: 'NACIONAL',
+    categoriasPraticadas: 'Embalagens, Insumos, Matéria Prima',
+    moedasUtilizadas: 'BRL',
+  })
+
+  // Carregar dados e perfil do banco de dados
   const initHub = useCallback(async (uid: string) => {
     setErroFetch('')
     try {
       const [dealsRes, profileRes] = await Promise.all([
-        getDealsByUser(uid), // <--- FILTRO POR USUÁRIO LOGADO
+        getDealsByUser(uid),
         getUserProfileState(uid)
       ])
 
@@ -130,6 +142,9 @@ export default function DashboardHubPage() {
       if (profileRes.success) {
         setHasCompany(profileRes.hasCompany)
         setIsCloser(profileRes.isCloser)
+        if (profileRes.organization || profileRes.company) {
+          setOrgData(profileRes.organization || profileRes.company)
+        }
       }
     } catch (err: unknown) {
       setErroFetch(err instanceof Error ? err.message : 'Falha ao carregar dados do Hub.')
@@ -166,7 +181,7 @@ export default function DashboardHubPage() {
     router.replace('/login')
   }
 
-  // Ações de Navegação Inteligente
+  // Ações de Navegação
   const handleAcessarEmpresa = (e?: React.MouseEvent) => {
     if (e) e.preventDefault()
     if (!hasCompany) {
@@ -185,20 +200,28 @@ export default function DashboardHubPage() {
     }
   }
 
-  // Cadastrar Empresa no Modal On-Demand
+  // Cadastrar Empresa Enriquecida
   const handleCadastrarEmpresa = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!user || !companyName.trim()) return
+    if (!user || !formCompany.companyName.trim()) return
     setSubmittingOnboarding(true)
 
     const res = await registerCompanyOnDemand({
       userId: user.id,
-      companyName: companyName.trim(),
+      companyName: formCompany.companyName.trim(),
+      cnpj: formCompany.cnpj.trim(),
+      faturamentoAnual: formCompany.faturamentoAnual,
+      gastoComprasAno: formCompany.gastoComprasAno,
+      segmentoEmpresa: formCompany.segmentoEmpresa,
+      escopoMercado: formCompany.escopoMercado,
+      categoriasPraticadas: formCompany.categoriasPraticadas.split(',').map(c => c.trim()),
+      moedasUtilizadas: formCompany.moedasUtilizadas.split(',').map(m => m.trim()),
     })
 
     setSubmittingOnboarding(false)
     if (res.success) {
       setHasCompany(true)
+      setOrgData(res.organization)
       setShowCompanyModal(false)
       router.push('/dashboard/empresa')
     } else {
@@ -206,7 +229,7 @@ export default function DashboardHubPage() {
     }
   }
 
-  // Ativar Perfil de Closer no Modal On-Demand
+  // Ativar Perfil de Closer
   const handleAtivarCloser = async () => {
     if (!user) return
     setSubmittingOnboarding(true)
@@ -223,7 +246,6 @@ export default function DashboardHubPage() {
     }
   }
 
-  // Cálculos consolidados da vitrine privada do usuário
   const totalSavingGeral = deals.reduce((acc, d) => acc + (d.savingValue || 0), 0)
   const totalMesasAtivas = deals.filter(d => d.status === 'IN_NEGOTIATION').length
   const totalConcluidas  = deals.filter(d => d.status === 'APPROVED').length
@@ -231,6 +253,16 @@ export default function DashboardHubPage() {
   const nomeUsuario = (user?.user_metadata?.nome_completo as string | undefined)?.split(' ')[0]
     ?? user?.email?.split('@')[0]
     ?? 'Usuário'
+
+  const inputStyle = {
+    width: '100%', padding: '9px 12px', background: SLATE, border: `1px solid ${BORDER}`,
+    borderRadius: 8, fontSize: 13, outline: 'none', color: NAVY, boxSizing: 'border-box' as const
+  }
+
+  const labelStyle = {
+    display: 'block' as const, fontSize: 10, fontWeight: 700 as const, color: NAVY,
+    marginBottom: 4, textTransform: 'uppercase' as const, letterSpacing: '0.05em'
+  }
 
   if (carregando) return <Spinner />
 
@@ -252,7 +284,6 @@ export default function DashboardHubPage() {
         zIndex: 100
       }}>
         <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 65px)' }}>
-          {/* Logo Branding */}
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
             <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
               <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 32, width: 'auto', objectFit: 'contain' }} />
@@ -262,10 +293,8 @@ export default function DashboardHubPage() {
             </Link>
           </div>
 
-          {/* Menu de Produtos do Ecossistema com Scroll */}
           <div style={{ padding: '1.25rem 1rem', overflowY: 'auto', flex: 1 }}>
             
-            {/* Bloco: Módulos do Deal Desk (Core) */}
             <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 8 }}>
               MÓDULOS DEAL DESK
             </p>
@@ -324,7 +353,6 @@ export default function DashboardHubPage() {
 
             </div>
 
-            {/* Bloco: Todos os Produtos Mapeados do Ecossistema */}
             <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 8 }}>
               PRODUTOS B2B DEUACORDO
             </p>
@@ -367,7 +395,6 @@ export default function DashboardHubPage() {
           </div>
         </div>
 
-        {/* Rodapé da Sidebar: Perfil + Logout */}
         <div style={{ padding: '1rem', borderTop: `1px solid ${BORDER}`, background: SLATE, flexShrink: 0, height: 65, boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ overflow: 'hidden', paddingRight: 8 }}>
@@ -392,7 +419,6 @@ export default function DashboardHubPage() {
       {/* ── CONTEÚDO PRINCIPAL (DIREITA) ────────────────────────── */}
       <div style={{ marginLeft: 270, flex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
 
-        {/* Top Header */}
         <header style={{ background: WHITE, borderBottom: `1px solid ${BORDER}`, padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h1 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: 0 }}>
@@ -410,7 +436,6 @@ export default function DashboardHubPage() {
           </div>
         </header>
 
-        {/* Conteúdo Interno do Dashboard */}
         <main style={{ padding: '2rem', maxWidth: 1200, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
           
           {erroFetch && (
@@ -419,7 +444,6 @@ export default function DashboardHubPage() {
             </div>
           )}
 
-          {/* Métricas Globais do Usuário */}
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
             <MetricCard label="SAVING TOTAL PLATAFORMA" value={brl(totalSavingGeral)} sub="economia acumulada gerada" accent />
             <MetricCard label="MESAS EM NEGOCIAÇÃO" value={String(totalMesasAtivas)} sub="demandas ativas no momento" />
@@ -434,22 +458,41 @@ export default function DashboardHubPage() {
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
               
-              {/* Card 1: Empresa */}
+              {/* Card 1: Empresa Estilizada (Destaque Estilo Página Facebook / LinkedIn) */}
               <div style={{
                 background: WHITE, border: `1.5px solid ${hasCompany ? E : BORDER}`,
                 borderRadius: 14, padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
               }}>
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                    <span style={{ fontSize: 32 }}>🏢</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    
+                    {/* Destaque Estilo Página */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{
+                        width: 46, height: 46, borderRadius: 12, background: hasCompany ? '#ECFDF5' : SLATE,
+                        border: `1.5px solid ${hasCompany ? '#A7F3D0' : BORDER}`, display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', fontSize: 24, fontWeight: 800, color: E
+                      }}>
+                        🏢
+                      </div>
+                      <div>
+                        <h4 style={{ fontSize: 15, fontWeight: 800, color: NAVY, margin: 0 }}>
+                          {hasCompany && orgData ? orgData.name : 'Minha Empresa'}
+                        </h4>
+                        <p style={{ fontSize: 11, color: MUTED, margin: 0 }}>
+                          {hasCompany ? 'Perfil B2B Verificado' : 'Ainda não cadastrado'}
+                        </p>
+                      </div>
+                    </div>
+
                     <Badge
                       text={hasCompany ? 'Cadastrado' : 'Ativação Grátis'}
                       bg={hasCompany ? '#DCFCE7' : '#FEF9C3'}
                       color={hasCompany ? '#166534' : '#854D0E'}
                     />
                   </div>
-                  <h3 style={{ fontSize: 17, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Área da Empresa</h3>
+
                   <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: '0 0 1.25rem' }}>
                     Abra demandas de compra para produtos e insumos. Nossos Closers negociam para sua empresa com 20% de Success Fee.
                   </p>
@@ -570,44 +613,119 @@ export default function DashboardHubPage() {
         </main>
       </div>
 
-      {/* ── MODAIS ON-DEMAND ───────────────────────────────────── */}
+      {/* ── MODAL DE CADASTRO DE EMPRESA ENRIQUECIDO ─────────────────── */}
       {showCompanyModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 460, padding: '2rem', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
-            <h3 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Cadastre sua Empresa</h3>
-            <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1.25rem', lineHeight: 1.4 }}>
-              Informe a razão social da sua organização para liberar a abertura de demandas de compras e acompanhamento de savings.
+          <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 580, maxHeight: '90vh', overflowY: 'auto', padding: '2rem', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: '0 0 4px' }}>Cadastrar Empresa & Perfil de Compras</h3>
+            <p style={{ fontSize: 12, color: MUTED, margin: '0 0 1.25rem', lineHeight: 1.4 }}>
+              As informações abaixo ajudam nossos Closers a negociarem condições com os fornecedores mais adequados. O nome da empresa fica restrito e seguro.
             </p>
 
             <form onSubmit={handleCadastrarEmpresa}>
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Nome da Empresa / Razão Social *
-                </label>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={labelStyle}>Nome da Empresa / Razão Social *</label>
                 <input
-                  type="text"
-                  required
-                  placeholder="Ex: Minha Empresa LTDA"
-                  value={companyName}
-                  onChange={e => setCompanyName(e.target.value)}
-                  style={{ width: '100%', padding: '10px 13px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
+                  type="text" required placeholder="Ex: Distribuidora de Bebidas Brasil LTDA"
+                  value={formCompany.companyName} onChange={e => setFormCompany({ ...formCompany, companyName: e.target.value })}
+                  style={inputStyle}
                 />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: '1rem' }}>
+                <div>
+                  <label style={labelStyle}>CNPJ *</label>
+                  <input
+                    type="text" required placeholder="00.000.000/0001-00"
+                    value={formCompany.cnpj} onChange={e => setFormCompany({ ...formCompany, cnpj: e.target.value })}
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Segmento *</label>
+                  <select
+                    value={formCompany.segmentoEmpresa} onChange={e => setFormCompany({ ...formCompany, segmentoEmpresa: e.target.value })}
+                    style={inputStyle}
+                  >
+                    <option value="INDUSTRIA">Indústria</option>
+                    <option value="COMERCIO">Comércio</option>
+                    <option value="DISTRIBUIDORA">Distribuidora</option>
+                    <option value="SERVICOS">Prestadora de Serviços</option>
+                    <option value="PESSOA_FISICA">Produtor / PF</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: '1rem' }}>
+                <div>
+                  <label style={labelStyle}>Faturamento Anual *</label>
+                  <select
+                    value={formCompany.faturamentoAnual} onChange={e => setFormCompany({ ...formCompany, faturamentoAnual: e.target.value })}
+                    style={inputStyle}
+                  >
+                    <option>Até R$ 360k (Micro)</option>
+                    <option>R$ 360k a R$ 4.8Mi (Pequena)</option>
+                    <option>R$ 4.8Mi a R$ 50Mi (Média)</option>
+                    <option>Acima de R$ 50Mi (Grande)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Compras/Ano Estimado *</label>
+                  <select
+                    value={formCompany.gastoComprasAno} onChange={e => setFormCompany({ ...formCompany, gastoComprasAno: e.target.value })}
+                    style={inputStyle}
+                  >
+                    <option>Até R$ 100k/ano</option>
+                    <option>R$ 100k a R$ 500k/ano</option>
+                    <option>R$ 500k a R$ 2Mi/ano</option>
+                    <option>Acima de R$ 2Mi/ano</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={labelStyle}>Categorias Principais de Compras *</label>
+                <input
+                  type="text" required placeholder="Ex: Embalagens, Papelão, Aço, Insumos hospitalares"
+                  value={formCompany.categoriasPraticadas} onChange={e => setFormCompany({ ...formCompany, categoriasPraticadas: e.target.value })}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: '1.5rem' }}>
+                <div>
+                  <label style={labelStyle}>Escopo de Mercado</label>
+                  <select
+                    value={formCompany.escopoMercado} onChange={e => setFormCompany({ ...formCompany, escopoMercado: e.target.value })}
+                    style={inputStyle}
+                  >
+                    <option value="NACIONAL">Compre apenas no Brasil (Nacional)</option>
+                    <option value="IMPORTADO">Compra Importados</option>
+                    <option value="AMBOS">Nacional & Importado</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Moedas Utilizadas</label>
+                  <input
+                    type="text" placeholder="Ex: BRL, USD, EUR"
+                    value={formCompany.moedasUtilizadas} onChange={e => setFormCompany({ ...formCompany, moedasUtilizadas: e.target.value })}
+                    style={inputStyle}
+                  />
+                </div>
               </div>
 
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
                 <button
-                  type="button"
-                  onClick={() => setShowCompanyModal(false)}
+                  type="button" onClick={() => setShowCompanyModal(false)}
                   style={{ padding: '10px 16px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
                 >
                   Cancelar
                 </button>
                 <button
-                  type="submit"
-                  disabled={submittingOnboarding}
+                  type="submit" disabled={submittingOnboarding}
                   style={{ padding: '10px 20px', background: E, border: 'none', borderRadius: 8, color: WHITE, fontSize: 13, fontWeight: 700, cursor: submittingOnboarding ? 'wait' : 'pointer' }}
                 >
-                  {submittingOnboarding ? 'Ativando...' : 'Cadastrar e Acessar Painel'}
+                  {submittingOnboarding ? 'Cadastrando...' : 'Salvar & Acessar Painel →'}
                 </button>
               </div>
             </form>
@@ -632,15 +750,13 @@ export default function DashboardHubPage() {
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button
-                type="button"
-                onClick={() => setShowCloserModal(false)}
+                type="button" onClick={() => setShowCloserModal(false)}
                 style={{ padding: '10px 16px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
               >
                 Voltar
               </button>
               <button
-                onClick={handleAtivarCloser}
-                disabled={submittingOnboarding}
+                onClick={handleAtivarCloser} disabled={submittingOnboarding}
                 style={{ padding: '10px 20px', background: AMBER, border: 'none', borderRadius: 8, color: NAVY, fontSize: 13, fontWeight: 700, cursor: submittingOnboarding ? 'wait' : 'pointer' }}
               >
                 {submittingOnboarding ? 'Ativando...' : 'Confirmar e Ser Closer'}
