@@ -94,7 +94,6 @@ export default function DeuAcordoAcademyPage() {
         const res = await fetch('/api/academy/products');
         if (res.ok) {
           const data = await res.json();
-          // Se tiver produtos cadastrados no banco via Admin, substitui a lista
           if (Array.isArray(data) && data.length > 0) {
             setProducts(data);
           }
@@ -176,14 +175,8 @@ export default function DeuAcordoAcademyPage() {
               </div>
             </div>
 
-            {/* Área de Membros e Painel Admin */}
+            {/* Área de Membros Limpa (Sem o botão de Gerenciador Admin) */}
             <div className="flex items-center gap-3">
-              <Link
-                href="/dashboard/academy/admin"
-                className="text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg transition-colors"
-              >
-                ⚙️ Gerenciador Admin
-              </Link>
               <Link
                 href="/login"
                 className="text-xs font-bold text-slate-600 hover:text-slate-900 px-3 py-2"
