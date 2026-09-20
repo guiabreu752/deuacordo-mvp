@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 
-// ── Lista de Produtos Afiliados (Livros, Cursos e Insumos) ─────
+// ── Interface de Produto de Afiliação ─────
 interface AffiliateProduct {
   id: string;
   title: string;
@@ -13,11 +13,13 @@ interface AffiliateProduct {
   priceEstimate: string;
   rating: string;
   imageUrl: string;
-  affiliateUrl: string; // Seu link de comissão (Amazon, Hotmart, etc)
+  affiliateUrl: string;
   badge?: string;
+  active?: boolean;
 }
 
-const affiliateProducts: AffiliateProduct[] = [
+// ── Lista Fallback (Sua curadoria atual com o link da Amazon ativo) ─────
+const fallbackProducts: AffiliateProduct[] = [
   {
     id: '1',
     title: 'Como Chegar ao Sim (Getting to Yes)',
@@ -27,7 +29,6 @@ const affiliateProducts: AffiliateProduct[] = [
     priceEstimate: 'R$ 49,90',
     rating: '4.9 ★',
     imageUrl: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=400',
-    // 👇 Seu link oficial de afiliado da Amazon ativo:
     affiliateUrl: 'https://www.amazon.com.br/Como-chegar-sim-negociar-concess%C3%B5es/dp/8543106214?dib=eyJ2IjoiMSJ9.twB_zW1zFsedCjtOSFv6Bu6ij-EzTh8JIkAQBqdnWrgCqivUO5B3ES76V3iB-EGxTV3iOKMBiTSLrG6Us2MCwnQAXkdaXOROGTVlGj4eDGgKUJzD0SlWgHi9dI-tXrZ9hjtsTtxfoYtfKi_67f8SHD64Dr_uBJVgJD54WWV3A89Li2uH3TuiNN7Mdf3rSG0gJYrzrA1ByL_38qfpb1cuVgFAIkjXHbu8SpkDxIIEXToaLK3q5_mRNS4N3oiwxcQn128LFccGANXVYjcn3KgvZxksknNycM5dmeQnF02iDqc.IvSFAlslqMoOsVQkp7xiZqytFiUJABcF8HdzZ7lel8c&dib_tag=se&keywords=como+chegar+ao+sim&qid=1789860098&sr=8-1&ufe=app_do%3Aamzn1.fos.2fb4d624-b7be-441e-af6d-3c953cfae5bf&linkCode=ll2&tag=deuacordo-20&linkId=520f0e5969f967ce2ee75afa74b6cfc0&ref_=as_li_ss_tl',
     badge: 'Mais Vendido',
   },
@@ -80,12 +81,36 @@ const affiliateProducts: AffiliateProduct[] = [
 ];
 
 export default function DeuAcordoAcademyPage() {
+  const [products, setProducts] = useState<AffiliateProduct[]>(fallbackProducts);
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // Filtragem
-  const filteredProducts = affiliateProducts.filter((product) => {
+  // ── Carregar produtos dinâmicos do Banco de Dados via API ─────
+  useEffect(() => {
+    async function loadDynamicProducts() {
+      try {
+        const res = await fetch('/api/academy/products');
+        if (res.ok) {
+          const data = await res.json();
+          // Se tiver produtos cadastrados no banco via Admin, substitui a lista
+          if (Array.isArray(data) && data.length > 0) {
+            setProducts(data);
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao conectar com o banco de dados:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadDynamicProducts();
+  }, []);
+
+  // Filtragem local
+  const filteredProducts = products.filter((product) => {
     const matchesCategory =
       selectedCategory === 'todos' || product.category === selectedCategory;
     const matchesSearch =
@@ -137,7 +162,7 @@ export default function DeuAcordoAcademyPage() {
               </div>
             </div>
 
-            {/* Barra de Busca Rapidinha */}
+            {/* Barra de Busca */}
             <div className="flex-1 max-w-md mx-4 hidden md:block">
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
@@ -151,8 +176,14 @@ export default function DeuAcordoAcademyPage() {
               </div>
             </div>
 
-            {/* Aviso sobre Cursos Próprios */}
+            {/* Área de Membros e Painel Admin */}
             <div className="flex items-center gap-3">
+              <Link
+                href="/dashboard/academy/admin"
+                className="text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                ⚙️ Gerenciador Admin
+              </Link>
               <Link
                 href="/login"
                 className="text-xs font-bold text-slate-600 hover:text-slate-900 px-3 py-2"
@@ -164,7 +195,7 @@ export default function DeuAcordoAcademyPage() {
         </div>
       </header>
 
-      {/* Hero Banner Aberto */}
+      {/* Hero Banner */}
       <section className="bg-slate-900 text-white py-12 px-4 sm:px-6 lg:px-8 border-b border-slate-800">
         <div className="max-w-5xl mx-auto text-center">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-bold border border-emerald-500/20 mb-4">
@@ -209,7 +240,7 @@ export default function DeuAcordoAcademyPage() {
           })}
         </div>
 
-        {/* Vitrine de Produtos com Link de Afiliado */}
+        {/* Vitrine de Produtos com Links de Afiliados */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredProducts.map((item) => (
             <div
@@ -230,7 +261,7 @@ export default function DeuAcordoAcademyPage() {
                     </span>
                   )}
                   <span className="absolute bottom-3 right-3 bg-white/95 text-slate-900 text-xs font-extrabold px-2 py-0.5 rounded-md shadow-sm">
-                    {item.rating}
+                    {item.rating || '5.0 ★'}
                   </span>
                 </div>
 
@@ -252,7 +283,7 @@ export default function DeuAcordoAcademyPage() {
               <div className="p-5 pt-0 border-t border-slate-100 mt-auto flex items-center justify-between">
                 <div>
                   <span className="text-[10px] text-slate-400 block font-semibold">Preço estimado</span>
-                  <span className="text-sm font-extrabold text-slate-900">{item.priceEstimate}</span>
+                  <span className="text-sm font-extrabold text-slate-900">{item.priceEstimate || 'Sob Consulta'}</span>
                 </div>
 
                 <a

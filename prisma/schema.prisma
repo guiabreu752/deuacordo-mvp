@@ -98,3 +98,25 @@ model Deal {
 
   @@map("deals")
 }
+
+// --------------------------------------
+// MÓDULO 11: DEUACORDO ACADEMY (AFILIADOS)
+// --------------------------------------
+
+model AffiliateProduct {
+  id            String   @id @default(cuid())
+  title         String
+  category      String   // 'livros' | 'cursos' | 'escritorio' | 'software'
+  categoryLabel String
+  description   String
+  priceEstimate String
+  rating        String   @default("5.0 ★")
+  imageUrl      String
+  affiliateUrl  String   // Link com o ID de comissão (Amazon, Hotmart, etc.)
+  badge         String?  // Ex: "Mais Vendido", "Recomendado"
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("affiliate_products")
+}
