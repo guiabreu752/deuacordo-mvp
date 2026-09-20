@@ -4,14 +4,18 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 
 interface PulseArticlePageProps {
-  params: {
+  params: Promise<{
     slug: string
-  }
+  }>
 }
 
 export default async function PulseArticlePage({ params }: PulseArticlePageProps) {
+  // Aguarda a resolução das rotas dinâmicas (exigido no Next.js recente)
+  const { slug } = await params
+
+  // Busca o artigo e suas categorias no banco Prisma
   const article = await prisma.newsArticle.findUnique({
-    where: { slug: params.slug },
+    where: { slug },
     include: {
       categories: {
         include: { category: true }
@@ -19,6 +23,7 @@ export default async function PulseArticlePage({ params }: PulseArticlePageProps
     }
   })
 
+  // Se a notícia não for encontrada, retorna 404 de forma limpa sem quebrar o servidor
   if (!article) {
     notFound()
   }
@@ -47,12 +52,18 @@ export default async function PulseArticlePage({ params }: PulseArticlePageProps
       <main className="max-w-4xl mx-auto px-4 py-10">
         <article className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-10 shadow-sm">
           {/* Categorias */}
-          <div className="flex gap-2 mb-4">
-            {article.categories.map((c) => (
-              <span key={c.categoryId} className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2.5 py-1 rounded-md">
-                {c.category.name}
+          <div className="flex gap-2 mb-4 flex-wrap">
+            {article.categories && article.categories.length > 0 ? (
+              article.categories.map((c) => (
+                <span key={c.categoryId} className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2.5 py-1 rounded-md">
+                  {c.category.name}
+                </span>
+              ))
+            ) : (
+              <span className="bg-slate-100 text-slate-600 text-[11px] font-bold px-2.5 py-1 rounded-md">
+                Geopolítica & Mercado
               </span>
-            ))}
+            )}
           </div>
 
           <h1 className="text-2xl sm:text-4xl font-extrabold text-slate-900 mb-4 leading-tight">
