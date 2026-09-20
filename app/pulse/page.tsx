@@ -6,6 +6,7 @@ import Link from 'next/link'
 interface Article {
   id: string
   title: string
+  slug: string
   summary: string
   impactAnalysis?: string
   sourceName: string
@@ -36,6 +37,7 @@ export default function DeuAcordoPulsePage() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
+      {/* Header Público do Pulse */}
       <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
@@ -61,6 +63,7 @@ export default function DeuAcordoPulsePage() {
         </div>
       </header>
 
+      {/* Hero Banner */}
       <section className="bg-slate-900 text-white py-10 px-4 border-b border-slate-800">
         <div className="max-w-5xl mx-auto text-center">
           <span className="inline-block px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-bold border border-emerald-500/20 mb-3">
@@ -75,6 +78,7 @@ export default function DeuAcordoPulsePage() {
         </div>
       </section>
 
+      {/* Filtro de Categorias */}
       <main className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <div className="flex gap-2 overflow-x-auto pb-2">
@@ -94,6 +98,7 @@ export default function DeuAcordoPulsePage() {
           </div>
         </div>
 
+        {/* Vitrine de Notícias */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {articles.length === 0 ? (
             <div className="col-span-full text-center py-12 bg-white rounded-2xl border border-slate-200">
@@ -113,13 +118,16 @@ export default function DeuAcordoPulsePage() {
                   </div>
 
                   <div className="p-5">
-                    <h3 className="font-bold text-slate-900 text-base mb-2 leading-snug">
-                      {item.title}
-                    </h3>
+                    <Link href={`/pulse/${item.slug}`}>
+                      <h3 className="font-bold text-slate-900 text-base mb-2 leading-snug hover:text-emerald-600 transition-colors">
+                        {item.title}
+                      </h3>
+                    </Link>
                     <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed mb-4">
                       {item.summary}
                     </p>
 
+                    {/* Destaque Exclusivo do Plano Pago */}
                     {isPaidUser ? (
                       <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-2">
                         <span className="text-[10px] font-extrabold text-emerald-800 uppercase block mb-1">
@@ -142,14 +150,14 @@ export default function DeuAcordoPulsePage() {
                   <span className="text-[11px] text-slate-400">
                     {new Date(item.publishedAt).toLocaleDateString('pt-BR')}
                   </span>
-                  <a
-                    href={item.sourceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  
+                  {/* Direcionamento Interno para Rota do Blog/Artigo Propriatário */}
+                  <Link
+                    href={`/pulse/${item.slug}`}
                     className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
                   >
-                    Ler Fonte Original ↗
-                  </a>
+                    Ler Notícia Completa →
+                  </Link>
                 </div>
               </article>
             ))
