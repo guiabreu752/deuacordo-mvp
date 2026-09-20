@@ -149,7 +149,7 @@ export default function LoginPage() {
         },
       })
       if (error) throw error
-      setSucesso('Conta criada com sucesso! Faça login para acessar o Hub.')
+      setSucesso('Conta criada com sucesso! Faça login para acessar a plataforma.')
       setTab('entrar')
       setSenha('')
     } catch (err: unknown) {
@@ -251,7 +251,7 @@ export default function LoginPage() {
               <>
                 <h2 style={{ fontSize: 22, fontWeight: 800, color: NAVY, margin: '0 0 0.25rem' }}>Bem-vindo de volta.</h2>
                 <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1.75rem' }}>
-                  Acesse o ecossistema e navegue pelos seus módulos ativos.
+                  Acesse o ecossistema e navegue pelos seus módulos.
                 </p>
 
                 <form onSubmit={entrar} noValidate>
@@ -270,7 +270,7 @@ export default function LoginPage() {
                     fontSize: 15, fontWeight: 700, cursor: loading ? 'wait' : 'pointer',
                     transition: 'background 0.15s',
                   }}>
-                    {loading ? 'Entrando...' : 'Entrar no Hub →'}
+                    {loading ? 'Entrando...' : 'Entrar na Plataforma →'}
                   </button>
                 </form>
 
