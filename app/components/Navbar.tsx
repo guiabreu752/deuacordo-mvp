@@ -1,5 +1,6 @@
 // ============================================================
 // ARQUIVO: app/components/Navbar.tsx
+// Navegação atualizada com links para Academy e Pulse (News)
 // ============================================================
 'use client'
 
@@ -11,7 +12,6 @@ const E      = '#10B981'
 const MUTED  = '#64748B'
 const BORDER = '#E2E8F0'
 
-// Transformamos 'Produtos Indicados' em um link direto sem 'dropdown'
 const menuItems = [
   {
     label: 'Soluções',
@@ -29,7 +29,11 @@ const menuItems = [
   },
   {
     label: 'Produtos Indicados',
-    href: '/academy', // Redirecionamento direto ao clicar
+    href: '/academy', // Link direto para a Academy
+  },
+  {
+    label: 'News', // Link direto para o DeuAcordo Pulse
+    href: '/pulse',
   },
   {
     label: 'Comunidade',
@@ -99,7 +103,7 @@ export default function Navbar() {
                 </button>
               )}
 
-              {/* Submenu Dropdown apenas para os itens que contêm o objeto 'dropdown' */}
+              {/* Submenu Dropdown apenas para os itens que contêm 'dropdown' */}
               {item.dropdown && activeDropdown === item.label && (
                 <div style={{
                   position: 'absolute', top: '100%', left: 0,
