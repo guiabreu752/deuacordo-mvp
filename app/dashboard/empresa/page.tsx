@@ -17,6 +17,21 @@ const SLATE  = '#F8FAFC'
 const WHITE  = '#FFFFFF'
 const RED    = '#EF4444'
 
+// ── Lista Completa de Produtos da Plataforma ────────────────
+const ECOSSISTEMA_PRODUTOS = [
+  { id: 'deal-desk',    name: 'Deal Desk',     icon: '🤝', active: true,  href: '/dashboard', desc: 'Centralizador e pipeline visual' },
+  { id: 'ai-breakdown', name: 'AI Breakdown',  icon: '🤖', active: true,  href: '/dashboard/ai-breakdown', desc: 'Desfragmentador e breakdown de custos espelhado' },
+  { id: 'auction',      name: 'Auction',       icon: '⚡', active: false, href: '#', desc: 'Leilão reverso ao vivo' },
+  { id: 'benchmark',    name: 'Benchmark',     icon: '📊', active: false, href: '#', desc: 'Inteligência comparativa de preços' },
+  { id: 'legal',        name: 'Legal',         icon: '⚖️', active: false, href: '#', desc: 'Conformidade e minutas automáticas' },
+  { id: 'risk',         name: 'Risk',          icon: '🛡️', active: false, href: '#', desc: 'Score de risco e homologação' },
+  { id: 'matrix',       name: 'Matrix',        icon: '📐', active: false, href: '#', desc: 'Matriz de decisão ponderada' },
+  { id: 'pulse',        name: 'Pulse',         icon: '📈', active: true,  href: '/pulse', desc: 'Dashboard executivo em tempo real' },
+  { id: 'route',        name: 'Route',         icon: '🔀', active: false, href: '#', desc: 'Roteamento de aprovações' },
+  { id: 'club',         name: 'Club',          icon: '💎', active: false, href: '#', desc: 'Comunidade e rede VIP' },
+  { id: 'academy',      name: 'Academy',       icon: '🎓', active: true,  href: '/academy', desc: 'Plataforma LMS de capacitação' },
+]
+
 interface FormNovaMesa {
   produto: string
   quantidade: string
@@ -357,7 +372,6 @@ export default function DashboardEmpresaPage() {
       setUser(u)
       let orgId = u.user_metadata?.organizationId
 
-      // Caso ainda não possua organização cadastrada, cadastra on-demand
       if (!orgId) {
         const companyName = u.user_metadata?.nome_completo
           ? `Empresa de ${u.user_metadata.nome_completo}`
@@ -446,152 +460,228 @@ export default function DashboardEmpresaPage() {
   if (carregando) return <Spinner />
 
   return (
-    <div style={{ minHeight: '100vh', background: SLATE, fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: SLATE, fontFamily: 'Inter, system-ui, sans-serif' }}>
 
-      {/* Header Unificado com Atalho para o Hub */}
-      <header style={{ background: WHITE, borderBottom: `1px solid ${BORDER}`, padding: '0.9rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-          <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 34, width: 'auto', objectFit: 'contain' }} />
-          <span style={{ fontWeight: 800, fontSize: 17, color: NAVY, letterSpacing: '-0.02em' }}>
-            DeuAcordo<span style={{ color: E }}>.com</span>
-          </span>
-        </Link>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ background: '#ECFDF5', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, border: '1px solid #A7F3D0' }}>
-            🏢 Painel da Empresa
+      {/* ── SIDEBAR LATERAL ESQUERDA ───────────────────────────── */}
+      <aside style={{
+        width: 270,
+        background: WHITE,
+        borderRight: `1px solid ${BORDER}`,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        position: 'fixed',
+        top: 0,
+        bottom: 0,
+        left: 0,
+        zIndex: 100
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 65px)' }}>
+          {/* Logo Branding */}
+          <div style={{ padding: '1.25rem 1.5rem', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
+            <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+              <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 32, width: 'auto', objectFit: 'contain' }} />
+              <span style={{ fontWeight: 800, fontSize: 17, color: NAVY, letterSpacing: '-0.02em' }}>
+                DeuAcordo<span style={{ color: E }}>.com</span>
+              </span>
+            </Link>
           </div>
-          <div style={{ textAlign: 'right', marginLeft: 8 }}>
-            <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, margin: 0 }}>{nomeUsuario}</p>
-            <p style={{ fontSize: 11, color: MUTED, margin: 0 }}>{user?.email}</p>
+
+          {/* Menu de Produtos B2B */}
+          <div style={{ padding: '1.25rem 1rem', overflowY: 'auto', flex: 1 }}>
+            <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12, paddingLeft: 8 }}>
+              PRODUTOS B2B DEUACORDO
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {ECOSSISTEMA_PRODUTOS.map(p => (
+                <div
+                  key={p.id}
+                  title={p.desc}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '9px 11px',
+                    borderRadius: 8,
+                    background: p.active ? '#ECFDF5' : 'transparent',
+                    border: `1px solid ${p.active ? '#A7F3D0' : 'transparent'}`,
+                    color: p.active ? '#065F46' : NAVY,
+                    fontSize: 13,
+                    fontWeight: p.active ? 700 : 500,
+                    opacity: p.active ? 1 : 0.7,
+                    cursor: p.active ? 'pointer' : 'default'
+                  }}
+                  onClick={() => p.active && router.push(p.href)}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 16 }}>{p.icon}</span>
+                    <span>{p.name}</span>
+                  </div>
+                  {p.active ? (
+                    <span style={{ fontSize: 9, background: E, color: WHITE, padding: '2px 6px', borderRadius: 4, fontWeight: 800 }}>ATIVO</span>
+                  ) : (
+                    <span style={{ fontSize: 9, background: SLATE, border: `1px solid ${BORDER}`, color: MUTED, padding: '2px 5px', borderRadius: 4, fontWeight: 700 }}>EM BREVE</span>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
-          <button onClick={sair} disabled={saindo} style={{
-            fontSize: 13, fontWeight: 700, color: RED, background: '#FEF2F2',
-            border: '1px solid #FECACA', padding: '7px 14px', borderRadius: 7,
-            cursor: saindo ? 'wait' : 'pointer', marginLeft: 8,
-          }}>
-            {saindo ? 'Saindo...' : 'Sair →'}
-          </button>
-        </div>
-      </header>
-
-      {/* Voltar para o Hub */}
-      <div style={{ maxWidth: 1100, margin: '0.75rem auto 0', padding: '0 1.5rem' }}>
-        <Link href="/dashboard" style={{ fontSize: 13, color: MUTED, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
-          ← Voltar para o Dashboard Hub
-        </Link>
-      </div>
-
-      <main style={{ maxWidth: 1100, margin: '0 auto', padding: '1.5rem 1.5rem 3rem' }}>
-
-        <div style={{ marginBottom: '2rem' }}>
-          <h1 style={{ fontSize: 23, fontWeight: 800, color: NAVY, margin: '0 0 3px' }}>Painel da Empresa</h1>
-          <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>
-            Gerencie suas solicitações de compras, aprove savings e acompanhe suas economias.
-          </p>
         </div>
 
-        {mesasAgAprv > 0 && (
-          <div style={{
-            background: '#FFFBEB', border: '1.5px solid #FCD34D', borderRadius: 10,
-            padding: '0.9rem 1.25rem', marginBottom: '1.5rem',
-            display: 'flex', alignItems: 'center', gap: 10,
-          }}>
-            <span style={{ fontSize: 20 }}>⏳</span>
-            <p style={{ fontSize: 13, color: '#92400E', margin: 0, fontWeight: 600 }}>
-              {mesasAgAprv} mesa{mesasAgAprv > 1 ? 's' : ''} aguardando sua aprovação — clique em "Ver Detalhes" para revisar e homologar o saving.
+        {/* Rodapé da Sidebar */}
+        <div style={{ padding: '1rem', borderTop: `1px solid ${BORDER}`, background: SLATE, flexShrink: 0, height: 65, boxSizing: 'border-box' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ overflow: 'hidden', paddingRight: 8 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nomeUsuario}</p>
+              <p style={{ fontSize: 10, color: MUTED, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.email}</p>
+            </div>
+            <button
+              onClick={sair}
+              disabled={saindo}
+              title="Sair"
+              style={{
+                background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, color: RED,
+                padding: '6px 10px', fontSize: 12, fontWeight: 700, cursor: saindo ? 'wait' : 'pointer', flexShrink: 0
+              }}
+            >
+              {saindo ? '...' : 'Sair'}
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* ── CONTEÚDO PRINCIPAL (DIREITA) ────────────────────────── */}
+      <div style={{ marginLeft: 270, flex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+
+        {/* Header Superior */}
+        <header style={{ background: WHITE, borderBottom: `1px solid ${BORDER}`, padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <Link href="/dashboard" style={{ fontSize: 12, fontWeight: 600, color: MUTED, textDecoration: 'none' }}>
+                ← Voltar para o Dashboard Hub
+              </Link>
+            </div>
+            <h1 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: 0 }}>
+              Painel da Empresa
+            </h1>
+            <p style={{ fontSize: 12, color: MUTED, margin: '2px 0 0' }}>
+              Gerencie suas solicitações de compras, aprove savings e acompanhe suas economias.
             </p>
           </div>
-        )}
 
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
-          <MetricCard label="SAVING TOTAL ACUMULADO"  value={brl(totalSaving)}           sub="economia real gerada" accent />
-          <MetricCard label="MESAS ATIVAS"            value={String(mesasAtivas)}         sub="em negociação agora" />
-          <MetricCard label="AGUARDANDO APROVAÇÃO"    value={String(mesasAgAprv)}         sub="proposta disponível" />
-          <MetricCard label="MESAS CONCLUÍDAS"        value={String(mesasConc)}           sub="saving confirmado" />
-          <MetricCard label="TAXA MÉDIA DE SAVING"    value={`${taxaMedia.toFixed(1)}%`} sub="nas negociações" />
-        </div>
-
-        {erroFetch && (
-          <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 16px', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span>⚠️</span>
-            <p style={{ fontSize: 13, color: '#DC2626', margin: 0, fontWeight: 500 }}>{erroFetch}</p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span style={{ background: '#ECFDF5', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: '1px solid #A7F3D0' }}>
+              🏢 Painel da Empresa
+            </span>
           </div>
-        )}
+        </header>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-          <p style={{ fontSize: 14, fontWeight: 700, color: NAVY, margin: 0 }}>
-            {mesas.length} mesa{mesas.length !== 1 ? 's' : ''} registrada{mesas.length !== 1 ? 's' : ''}
-          </p>
-          <button
-            onClick={() => setModalNova(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, background: E, border: 'none', borderRadius: 8, color: WHITE, padding: '10px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px rgba(16,185,129,0.3)' }}
-          >
-            <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> Nova Mesa de Negociação
-          </button>
-        </div>
+        <main style={{ padding: '2rem', maxWidth: 1200, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
 
-        <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 100px 130px 130px 160px 120px', padding: '10px 16px', background: SLATE, borderBottom: `1px solid ${BORDER}` }}>
-            {['CÓDIGO', 'PRODUTO', 'QTD', 'BASELINE', 'SAVING', 'STATUS', 'AÇÃO'].map(c => (
-              <span key={c} style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: '0.07em' }}>{c}</span>
-            ))}
-          </div>
-
-          {mesas.length === 0 && (
-            <div style={{ padding: '3rem', textAlign: 'center' }}>
-              <p style={{ fontSize: 32, marginBottom: 12 }}>🏢</p>
-              <p style={{ fontSize: 16, fontWeight: 700, color: NAVY, margin: '0 0 6px' }}>Nenhuma mesa ainda</p>
-              <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1.5rem' }}>Abra sua primeira demanda e comece a economizar nas compras.</p>
-              <button onClick={() => setModalNova(true)} style={{ padding: '10px 24px', background: E, border: 'none', borderRadius: 8, color: WHITE, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                + Abrir primeira mesa
-              </button>
+          {mesasAgAprv > 0 && (
+            <div style={{
+              background: '#FFFBEB', border: '1.5px solid #FCD34D', borderRadius: 10,
+              padding: '0.9rem 1.25rem', marginBottom: '1.5rem',
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <span style={{ fontSize: 20 }}>⏳</span>
+              <p style={{ fontSize: 13, color: '#92400E', margin: 0, fontWeight: 600 }}>
+                {mesasAgAprv} mesa{mesasAgAprv > 1 ? 's' : ''} aguardando sua aprovação — clique em "Ver Detalhes" para revisar e homologar o saving.
+              </p>
             </div>
           )}
 
-          {mesas.map((mesa, i) => {
-            const sc  = statusCfg(mesa.status)
-            const qty = mesa.quantity || 1
-            return (
-              <div
-                key={mesa.id}
-                style={{ display: 'grid', gridTemplateColumns: '120px 1fr 100px 130px 130px 160px 120px', padding: '14px 16px', borderBottom: i === mesas.length - 1 ? 'none' : `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 0.1s' }}
-                onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFC')}
-                onMouseLeave={e => (e.currentTarget.style.background = WHITE)}
-                onClick={() => setMesaDetalhe(mesa)}
-              >
-                <span style={{ fontSize: 11, fontWeight: 700, color: E, fontFamily: 'monospace' }}>#{mesa.id.slice(0, 8).toUpperCase()}</span>
-                <span style={{ fontSize: 13, color: NAVY, fontWeight: 600, paddingRight: 12, lineHeight: 1.35 }}>{mesa.title}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{qty} un</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{brl((mesa.targetValue ?? 0) * qty)}</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: (mesa.savingValue ?? 0) > 0 ? E : MUTED }}>
-                  {(mesa.savingValue ?? 0) > 0 ? brl(mesa.savingValue) : '—'}
-                </span>
-                <Badge text={labelStatus(mesa.status)} bg={sc.bg} color={sc.color} />
-                <button
-                  onClick={e => { e.stopPropagation(); setMesaDetalhe(mesa) }}
-                  style={{ padding: '7px 12px', background: 'transparent', border: `1.5px solid ${BORDER}`, borderRadius: 7, fontSize: 12, fontWeight: 700, color: NAVY, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = E; e.currentTarget.style.color = E }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = BORDER; e.currentTarget.style.color = NAVY }}
-                >
-                  Ver Detalhes →
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
+            <MetricCard label="SAVING TOTAL ACUMULADO"  value={brl(totalSaving)}           sub="economia real gerada" accent />
+            <MetricCard label="MESAS ATIVAS"            value={String(mesasAtivas)}         sub="em negociação agora" />
+            <MetricCard label="AGUARDANDO APROVAÇÃO"    value={String(mesasAgAprv)}         sub="proposta disponível" />
+            <MetricCard label="MESAS CONCLUÍDAS"        value={String(mesasConc)}           sub="saving confirmado" />
+            <MetricCard label="TAXA MÉDIA DE SAVING"    value={`${taxaMedia.toFixed(1)}%`} sub="nas negociações" />
+          </div>
+
+          {erroFetch && (
+            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 16px', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span>⚠️</span>
+              <p style={{ fontSize: 13, color: '#DC2626', margin: 0, fontWeight: 500 }}>{erroFetch}</p>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: NAVY, margin: 0 }}>
+              {mesas.length} mesa{mesas.length !== 1 ? 's' : ''} registrada{mesas.length !== 1 ? 's' : ''}
+            </p>
+            <button
+              onClick={() => setModalNova(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, background: E, border: 'none', borderRadius: 8, color: WHITE, padding: '10px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px rgba(16,185,129,0.3)' }}
+            >
+              <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> Nova Mesa de Negociação
+            </button>
+          </div>
+
+          <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 100px 130px 130px 160px 120px', padding: '10px 16px', background: SLATE, borderBottom: `1px solid ${BORDER}` }}>
+              {['CÓDIGO', 'PRODUTO', 'QTD', 'BASELINE', 'SAVING', 'STATUS', 'AÇÃO'].map(c => (
+                <span key={c} style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: '0.07em' }}>{c}</span>
+              ))}
+            </div>
+
+            {mesas.length === 0 && (
+              <div style={{ padding: '3rem', textAlign: 'center' }}>
+                <p style={{ fontSize: 32, marginBottom: 12 }}>🏢</p>
+                <p style={{ fontSize: 16, fontWeight: 700, color: NAVY, margin: '0 0 6px' }}>Nenhuma mesa ainda</p>
+                <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1.5rem' }}>Abra sua primeira demanda e comece a economizar nas compras.</p>
+                <button onClick={() => setModalNova(true)} style={{ padding: '10px 24px', background: E, border: 'none', borderRadius: 8, color: WHITE, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  + Abrir primeira mesa
                 </button>
               </div>
-            )
-          })}
-        </div>
+            )}
 
-        {mesas.length > 0 && (
-          <div style={{ marginTop: '1.5rem', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 20 }}>💡</span>
-            <p style={{ fontSize: 13, color: '#065F46', margin: 0, lineHeight: 1.55 }}>
-              Sua empresa já acumula <strong>{brl(totalSaving)}</strong> em economias homologadas.
-              Fee total investido: <strong>{brl(totalSaving * 0.2)}</strong>.
-            </p>
+            {mesas.map((mesa, i) => {
+              const sc  = statusCfg(mesa.status)
+              const qty = mesa.quantity || 1
+              return (
+                <div
+                  key={mesa.id}
+                  style={{ display: 'grid', gridTemplateColumns: '120px 1fr 100px 130px 130px 160px 120px', padding: '14px 16px', borderBottom: i === mesas.length - 1 ? 'none' : `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 0.1s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFC')}
+                  onMouseLeave={e => (e.currentTarget.style.background = WHITE)}
+                  onClick={() => setMesaDetalhe(mesa)}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 700, color: E, fontFamily: 'monospace' }}>#{mesa.id.slice(0, 8).toUpperCase()}</span>
+                  <span style={{ fontSize: 13, color: NAVY, fontWeight: 600, paddingRight: 12, lineHeight: 1.35 }}>{mesa.title}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{qty} un</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{brl((mesa.targetValue ?? 0) * qty)}</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: (mesa.savingValue ?? 0) > 0 ? E : MUTED }}>
+                    {(mesa.savingValue ?? 0) > 0 ? brl(mesa.savingValue) : '—'}
+                  </span>
+                  <Badge text={labelStatus(mesa.status)} bg={sc.bg} color={sc.color} />
+                  <button
+                    onClick={e => { e.stopPropagation(); setMesaDetalhe(mesa) }}
+                    style={{ padding: '7px 12px', background: 'transparent', border: `1.5px solid ${BORDER}`, borderRadius: 7, fontSize: 12, fontWeight: 700, color: NAVY, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = E; e.currentTarget.style.color = E }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = BORDER; e.currentTarget.style.color = NAVY }}
+                  >
+                    Ver Detalhes →
+                  </button>
+                </div>
+              )
+            })}
           </div>
-        )}
-      </main>
+
+          {mesas.length > 0 && (
+            <div style={{ marginTop: '1.5rem', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 20 }}>💡</span>
+              <p style={{ fontSize: 13, color: '#065F46', margin: 0, lineHeight: 1.55 }}>
+                Sua empresa já acumula <strong>{brl(totalSaving)}</strong> em economias homologadas.
+                Fee total investido: <strong>{brl(totalSaving * 0.2)}</strong>.
+              </p>
+            </div>
+          )}
+        </main>
+      </div>
 
       {modalNova && <ModalNovaMesa onClose={() => setModalNova(false)} onSalvar={criarMesa} salvando={salvando} />}
       {mesaDetalhe && (
