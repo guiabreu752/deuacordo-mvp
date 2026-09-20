@@ -3,22 +3,21 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 
-// ── Interface de Produto de Afiliação ─────
 interface AffiliateProduct {
   id: string;
   title: string;
-  category: 'livros' | 'cursos' | 'escritorio' | 'software';
+  category: string;
   categoryLabel: string;
   description: string;
-  priceEstimate: string;
-  rating: string;
+  priceEstimate?: string;
+  rating?: string;
   imageUrl: string;
   affiliateUrl: string;
   badge?: string;
   active?: boolean;
 }
 
-// ── Lista Fallback (Sua curadoria atual com o link da Amazon ativo) ─────
+// ── Lista Fallback de Segurança ─────
 const fallbackProducts: AffiliateProduct[] = [
   {
     id: '1',
@@ -29,8 +28,9 @@ const fallbackProducts: AffiliateProduct[] = [
     priceEstimate: 'R$ 49,90',
     rating: '4.9 ★',
     imageUrl: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=400',
-    affiliateUrl: 'https://www.amazon.com.br/Como-chegar-sim-negociar-concess%C3%B5es/dp/8543106214?dib=eyJ2IjoiMSJ9.twB_zW1zFsedCjtOSFv6Bu6ij-EzTh8JIkAQBqdnWrgCqivUO5B3ES76V3iB-EGxTV3iOKMBiTSLrG6Us2MCwnQAXkdaXOROGTVlGj4eDGgKUJzD0SlWgHi9dI-tXrZ9hjtsTtxfoYtfKi_67f8SHD64Dr_uBJVgJD54WWV3A89Li2uH3TuiNN7Mdf3rSG0gJYrzrA1ByL_38qfpb1cuVgFAIkjXHbu8SpkDxIIEXToaLK3q5_mRNS4N3oiwxcQn128LFccGANXVYjcn3KgvZxksknNycM5dmeQnF02iDqc.IvSFAlslqMoOsVQkp7xiZqytFiUJABcF8HdzZ7lel8c&dib_tag=se&keywords=como+chegar+ao+sim&qid=1789860098&sr=8-1&ufe=app_do%3Aamzn1.fos.2fb4d624-b7be-441e-af6d-3c953cfae5bf&linkCode=ll2&tag=deuacordo-20&linkId=520f0e5969f967ce2ee75afa74b6cfc0&ref_=as_li_ss_tl',
+    affiliateUrl: 'https://www.amazon.com.br/Como-chegar-sim-negociar-concess%C3%B5es/dp/8543106214?tag=deuacordo-20',
     badge: 'Mais Vendido',
+    active: true,
   },
   {
     id: '2',
@@ -43,41 +43,8 @@ const fallbackProducts: AffiliateProduct[] = [
     imageUrl: 'https://images.unsplash.com/photo-1589829085413-56de8ae18c73?auto=format&fit=crop&q=80&w=400',
     badge: 'Recomendado',
     affiliateUrl: 'https://amazon.com.br?tag=deuacordo-20',
-  },
-  {
-    id: '3',
-    title: 'Master em Oratória & Persuasão B2B',
-    category: 'cursos',
-    categoryLabel: 'Cursos & Treinamentos',
-    description: 'Curso prático focado em comunicação assertiva, controle emocional e apresentações executivas.',
-    priceEstimate: 'R$ 297,00',
-    rating: '4.8 ★',
-    imageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=400',
-    affiliateUrl: 'https://hotmart.com?ref=seu_id_afiliado',
-  },
-  {
-    id: '4',
-    title: 'Kit Teclado e Mouse Ergonômico Sem Fio',
-    category: 'escritorio',
-    categoryLabel: 'Suprimentos para Escritório',
-    description: 'Aumente a produtividade nas mesas de negociação com periféricos ergonômicos de alta precisão.',
-    priceEstimate: 'R$ 219,00',
-    rating: '4.7 ★',
-    imageUrl: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?auto=format&fit=crop&q=80&w=400',
-    affiliateUrl: 'https://amazon.com.br?tag=deuacordo-20',
-  },
-  {
-    id: '5',
-    title: 'Licença ERP / Gestão de Compras Cloud',
-    category: 'software',
-    categoryLabel: 'Softwares & Ferramentas',
-    description: 'Automação de processos fiscais e gestão de ordens de serviço para médias empresas.',
-    priceEstimate: 'Sob Consulta',
-    rating: '4.9 ★',
-    imageUrl: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=400',
-    badge: 'B2B Partner',
-    affiliateUrl: 'https://parceiro.com?ref=seu_id_afiliado',
-  },
+    active: true,
+  }
 ];
 
 export default function DeuAcordoAcademyPage() {
@@ -87,7 +54,7 @@ export default function DeuAcordoAcademyPage() {
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // ── Carregar produtos dinâmicos do Banco de Dados via API ─────
+  // ── Busca Produtos Cadastrados no Banco de Dados Supabase ─────
   useEffect(() => {
     async function loadDynamicProducts() {
       try {
@@ -95,7 +62,11 @@ export default function DeuAcordoAcademyPage() {
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data) && data.length > 0) {
-            setProducts(data);
+            // Filtra apenas produtos ativos marcados pelo Admin
+            const activeOnly = data.filter((p: any) => p.active !== false);
+            if (activeOnly.length > 0) {
+              setProducts(activeOnly);
+            }
           }
         }
       } catch (error) {
@@ -108,13 +79,31 @@ export default function DeuAcordoAcademyPage() {
     loadDynamicProducts();
   }, []);
 
-  // Filtragem local
+  // ── Filtragem Tolerante (Funciona tanto se no banco estiver 'livros' como 'Livros de Negociação') ─────
   const filteredProducts = products.filter((product) => {
-    const matchesCategory =
-      selectedCategory === 'todos' || product.category === selectedCategory;
+    const catLower = product.category.toLowerCase();
+    const selectedLower = selectedCategory.toLowerCase();
+
+    let matchesCategory = false;
+
+    if (selectedCategory === 'todos') {
+      matchesCategory = true;
+    } else if (selectedLower === 'livros') {
+      matchesCategory = catLower.includes('livro');
+    } else if (selectedLower === 'cursos') {
+      matchesCategory = catLower.includes('curso');
+    } else if (selectedLower === 'escritorio') {
+      matchesCategory = catLower.includes('escritorio') || catLower.includes('suprimento');
+    } else if (selectedLower === 'software') {
+      matchesCategory = catLower.includes('software') || catLower.includes('licenca');
+    } else {
+      matchesCategory = catLower === selectedLower;
+    }
+
     const matchesSearch =
       product.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.description.toLowerCase().includes(searchTerm.toLowerCase());
+
     return matchesCategory && matchesSearch;
   });
 
@@ -175,7 +164,7 @@ export default function DeuAcordoAcademyPage() {
               </div>
             </div>
 
-            {/* Área de Membros Limpa (Sem o botão de Gerenciador Admin) */}
+            {/* Área de Membros */}
             <div className="flex items-center gap-3">
               <Link
                 href="/login"
@@ -203,7 +192,7 @@ export default function DeuAcordoAcademyPage() {
         </div>
       </section>
 
-      {/* Main Content Area */}
+      {/* Área Principal */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
         {/* Filtros por Categoria */}
@@ -241,10 +230,10 @@ export default function DeuAcordoAcademyPage() {
               className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between group"
             >
               <div>
-                {/* Image Header */}
+                {/* Imagem do Produto */}
                 <div className="relative h-48 bg-slate-100 overflow-hidden">
                   <img
-                    src={item.imageUrl}
+                    src={item.imageUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400'}
                     alt={item.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
@@ -258,10 +247,10 @@ export default function DeuAcordoAcademyPage() {
                   </span>
                 </div>
 
-                {/* Body Content */}
+                {/* Conteúdo */}
                 <div className="p-5">
                   <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block mb-1">
-                    {item.categoryLabel}
+                    {item.categoryLabel || item.category}
                   </span>
                   <h3 className="font-bold text-slate-900 text-base leading-snug mb-2 group-hover:text-emerald-600 transition-colors">
                     {item.title}
@@ -272,7 +261,7 @@ export default function DeuAcordoAcademyPage() {
                 </div>
               </div>
 
-              {/* Action / Affiliate Link Button */}
+              {/* Ação / Link de Afiliado */}
               <div className="p-5 pt-0 border-t border-slate-100 mt-auto flex items-center justify-between">
                 <div>
                   <span className="text-[10px] text-slate-400 block font-semibold">Preço estimado</span>
