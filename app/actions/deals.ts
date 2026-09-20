@@ -7,14 +7,34 @@ import { revalidatePath } from 'next/cache'
 export interface CreateDealDTO {
   title: string
   description?: string
-  quantity?: number      // <--- Novo campo: Quantidade de unidades/itens
+  quantity?: number      // Quantidade de unidades/itens
   targetValue?: number   // Valor unitário pago hoje (baseline unitário)
   currentValue?: number  // Valor unitário negociado
   organizationId: string
   createdById: string
 }
 
-// 1. Buscar Deals por Organização (Empresa)
+// 1. Buscar Deals isolados por Usuário (Minhas Mesas)
+export async function getDealsByUser(userId: string) {
+  try {
+    const deals = await prisma.deal.findMany({
+      where: {
+        createdById: userId,
+      },
+      include: {
+        organization: { select: { name: true } },
+        createdBy: { select: { name: true, email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    return { success: true, data: deals }
+  } catch (error) {
+    console.error('Erro ao buscar mesas do usuário:', error)
+    return { success: false, error: 'Erro ao carregar suas mesas de negociação.' }
+  }
+}
+
+// 2. Buscar Deals por Organização (Empresa)
 export async function getDealsByOrganization(organizationId: string) {
   try {
     const deals = await prisma.deal.findMany({
@@ -31,7 +51,7 @@ export async function getDealsByOrganization(organizationId: string) {
   }
 }
 
-// 2. Buscar todas as mesas ativas (Cockpit do Closer)
+// 3. Buscar todas as mesas ativas (Cockpit do Closer)
 export async function getAllDeals() {
   try {
     const deals = await prisma.deal.findMany({
@@ -48,7 +68,7 @@ export async function getAllDeals() {
   }
 }
 
-// 3. Criar uma nova mesa de negociação com suporte a Quantidade e garantias de FK
+// 4. Criar uma nova mesa de negociação
 export async function createDeal(data: CreateDealDTO) {
   try {
     const qty = data.quantity && data.quantity > 0 ? data.quantity : 1
@@ -59,7 +79,6 @@ export async function createDeal(data: CreateDealDTO) {
     const totalCurrent = currentUnit * qty
     const totalSaving = totalBaseline > totalCurrent ? totalBaseline - totalCurrent : 0
 
-    // 3.1. Garante que a Organização exista no banco Prisma
     const org = await prisma.organization.upsert({
       where: { id: data.organizationId },
       update: {},
@@ -70,7 +89,6 @@ export async function createDeal(data: CreateDealDTO) {
       },
     })
 
-    // 3.2. Garante que o Usuário exista no banco Prisma
     const user = await prisma.user.upsert({
       where: { id: data.createdById },
       update: {},
@@ -82,7 +100,6 @@ export async function createDeal(data: CreateDealDTO) {
       },
     })
 
-    // 3.3. Garante a relação entre o Usuário e a Organização (usersOnOrganizations)
     await prisma.usersOnOrganizations.upsert({
       where: {
         userId_organizationId: {
@@ -98,7 +115,6 @@ export async function createDeal(data: CreateDealDTO) {
       },
     })
 
-    // 3.4. Cria o Deal/Mesa no banco considerando quantidade
     const newDeal = await prisma.deal.create({
       data: {
         title: data.title,
@@ -126,7 +142,7 @@ export async function createDeal(data: CreateDealDTO) {
   }
 }
 
-// 4. Submeter proposta pelo Closer considerando a Quantidade e a regra de 3% de Saving
+// 5. Submeter proposta pelo Closer
 export async function submeterProposta(dealId: string, proposedUnitPrice: number) {
   try {
     const currentDeal = await prisma.deal.findUnique({ where: { id: dealId } })
@@ -167,7 +183,7 @@ export async function submeterProposta(dealId: string, proposedUnitPrice: number
   }
 }
 
-// 5. Aprovar Saving (Empresa confirma e libera Escrow)
+// 6. Aprovar Saving
 export async function aprovarSaving(dealId: string) {
   try {
     const updated = await prisma.deal.update({
@@ -185,7 +201,7 @@ export async function aprovarSaving(dealId: string) {
   }
 }
 
-// 6. Rejeitar ou Cancelar Mesa
+// 7. Rejeitar ou Cancelar Mesa
 export async function rejeitarMesa(dealId: string) {
   try {
     const updated = await prisma.deal.update({

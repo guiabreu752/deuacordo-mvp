@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
-import { getAllDeals } from '@/app/actions/deals'
+import { getDealsByUser } from '@/app/actions/deals'
 import { registerCompanyOnDemand, activateCloserProfileOnDemand, getUserProfileState } from '@/app/actions/user'
 
 // ── Paleta Executiva DeuAcordo ──────────────────────────────
@@ -112,12 +112,12 @@ export default function DashboardHubPage() {
   const [companyName, setCompanyName]           = useState('')
   const [submittingOnboarding, setSubmittingOnboarding] = useState(false)
 
-  // Carregar dados e perfil do banco de dados
+  // Carregar dados e perfil do banco de dados (Buscando apenas do usuário)
   const initHub = useCallback(async (uid: string) => {
     setErroFetch('')
     try {
       const [dealsRes, profileRes] = await Promise.all([
-        getAllDeals(),
+        getDealsByUser(uid), // <--- FILTRO POR USUÁRIO LOGADO
         getUserProfileState(uid)
       ])
 
@@ -223,7 +223,7 @@ export default function DashboardHubPage() {
     }
   }
 
-  // Cálculos consolidados da vitrine do Hub
+  // Cálculos consolidados da vitrine privada do usuário
   const totalSavingGeral = deals.reduce((acc, d) => acc + (d.savingValue || 0), 0)
   const totalMesasAtivas = deals.filter(d => d.status === 'IN_NEGOTIATION').length
   const totalConcluidas  = deals.filter(d => d.status === 'APPROVED').length
@@ -419,7 +419,7 @@ export default function DashboardHubPage() {
             </div>
           )}
 
-          {/* Métricas Globais */}
+          {/* Métricas Globais do Usuário */}
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
             <MetricCard label="SAVING TOTAL PLATAFORMA" value={brl(totalSavingGeral)} sub="economia acumulada gerada" accent />
             <MetricCard label="MESAS EM NEGOCIAÇÃO" value={String(totalMesasAtivas)} sub="demandas ativas no momento" />
@@ -503,12 +503,12 @@ export default function DashboardHubPage() {
             </div>
           </div>
 
-          {/* Vitrine Geral das Mesas */}
+          {/* Vitrine Geral das Mesas do Usuário */}
           <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
             <div style={{ padding: '1.25rem 1.5rem', borderBottom: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h3 style={{ fontSize: 15, fontWeight: 800, color: NAVY, margin: 0 }}>Vitrine Geral do Deal Desk</h3>
-                <p style={{ fontSize: 12, color: MUTED, margin: '2px 0 0' }}>Todas as mesas de negociação registradas na plataforma</p>
+                <h3 style={{ fontSize: 15, fontWeight: 800, color: NAVY, margin: 0 }}>Vitrine do Deal Desk (Suas Mesas)</h3>
+                <p style={{ fontSize: 12, color: MUTED, margin: '2px 0 0' }}>Mesas de negociação criadas por você na plataforma</p>
               </div>
               <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{deals.length} mesas</span>
             </div>
@@ -522,7 +522,7 @@ export default function DashboardHubPage() {
             {deals.length === 0 ? (
               <div style={{ padding: '3rem', textAlign: 'center' }}>
                 <p style={{ fontSize: 32, marginBottom: 12 }}>🤝</p>
-                <p style={{ fontSize: 15, fontWeight: 700, color: NAVY, margin: '0 0 6px' }}>Nenhuma mesa cadastrada ainda</p>
+                <p style={{ fontSize: 15, fontWeight: 700, color: NAVY, margin: '0 0 6px' }}>Você ainda não cadastrou nenhuma mesa</p>
                 <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>Cadastre sua empresa e abra a primeira demanda de compras.</p>
               </div>
             ) : (

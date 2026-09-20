@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
-import { getDealsByOrganization, createDeal, aprovarSaving } from '@/app/actions/deals'
+import { getDealsByUser, createDeal, aprovarSaving } from '@/app/actions/deals'
 import { registerCompanyOnDemand } from '@/app/actions/user'
 
 // ── Paleta Executiva DeuAcordo ──────────────────────────────
@@ -41,7 +41,6 @@ interface FormNovaMesa {
   prazo: string
 }
 
-// ── Helpers ───────────────────────────────────────────────────
 const brl = (n: number) =>
   n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -69,7 +68,6 @@ function labelStatus(s: string) {
   return m[s] || s
 }
 
-// ── Sub-componentes ───────────────────────────────────────────
 function Badge({ text, bg, color }: { text: string; bg: string; color: string }) {
   return (
     <span style={{
@@ -115,7 +113,6 @@ function Spinner() {
   )
 }
 
-// ── Modal Nova Mesa ───────────────────────────────────────────
 function ModalNovaMesa({ onClose, onSalvar, salvando }: {
   onClose: () => void
   onSalvar: (f: FormNovaMesa) => Promise<void>
@@ -251,7 +248,6 @@ function ModalNovaMesa({ onClose, onSalvar, salvando }: {
   )
 }
 
-// ── Modal Detalhes (Visão Empresa) ────────────────────────────
 function ModalDetalhes({ mesa, onClose, onAprovar, aprovando }: {
   mesa: any
   onClose: () => void
@@ -339,7 +335,6 @@ function ModalDetalhes({ mesa, onClose, onAprovar, aprovando }: {
   )
 }
 
-// ── Dashboard Principal da Empresa ────────────────────────────
 export default function DashboardEmpresaPage() {
   const router = useRouter()
   const [user, setUser]               = useState<User | null>(null)
@@ -352,9 +347,10 @@ export default function DashboardEmpresaPage() {
   const [aprovando, setAprovando]     = useState(false)
   const [saindo, setSaindo]           = useState(false)
 
-  const buscarMesas = useCallback(async (orgId: string) => {
+  // Buscar apenas as mesas cadastradas pelo próprio usuário
+  const buscarMesas = useCallback(async (userId: string) => {
     setErroFetch('')
-    const res = await getDealsByOrganization(orgId)
+    const res = await getDealsByUser(userId) // <--- FILTRO POR USUÁRIO LOGADO
     if (res.success && res.data) {
       setMesas(res.data)
     } else {
@@ -386,7 +382,7 @@ export default function DashboardEmpresaPage() {
         }
       }
 
-      await buscarMesas(orgId || 'default-org-id')
+      await buscarMesas(u.id)
       if (mounted) setCarregando(false)
     }
     init()
@@ -423,7 +419,7 @@ export default function DashboardEmpresaPage() {
 
       if (!res.success) throw new Error(res.error)
 
-      await buscarMesas(orgId)
+      await buscarMesas(user.id)
       setModalNova(false)
     } catch (err: unknown) {
       setErroFetch(err instanceof Error ? err.message : 'Erro ao criar mesa.')
@@ -433,13 +429,13 @@ export default function DashboardEmpresaPage() {
   }
 
   async function handleAprovarMesa(mesaId: string) {
+    if (!user) return
     setAprovando(true)
     try {
       const res = await aprovarSaving(mesaId)
       if (!res.success) throw new Error(res.error)
 
-      const orgId = user?.user_metadata?.organizationId || 'default-org-id'
-      await buscarMesas(orgId)
+      await buscarMesas(user.id)
       setMesaDetalhe(null)
     } catch (err: unknown) {
       setErroFetch(err instanceof Error ? err.message : 'Erro ao aprovar mesa.')
@@ -448,7 +444,6 @@ export default function DashboardEmpresaPage() {
     }
   }
 
-  // ── Métricas ──────────────────────────────────────────────
   const totalSaving   = mesas.reduce((s, m) => s + (m.savingValue ?? 0), 0)
   const totalBaseline = mesas.reduce((s, m) => s + ((m.targetValue ?? 0) * (m.quantity || 1)), 0)
   const mesasAtivas   = mesas.filter(m => m.status === 'IN_NEGOTIATION').length
@@ -477,7 +472,6 @@ export default function DashboardEmpresaPage() {
         zIndex: 100
       }}>
         <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 65px)' }}>
-          {/* Logo Branding */}
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
             <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
               <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 32, width: 'auto', objectFit: 'contain' }} />
@@ -487,7 +481,6 @@ export default function DashboardEmpresaPage() {
             </Link>
           </div>
 
-          {/* Menu de Produtos B2B */}
           <div style={{ padding: '1.25rem 1rem', overflowY: 'auto', flex: 1 }}>
             <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12, paddingLeft: 8 }}>
               PRODUTOS B2B DEUACORDO
@@ -530,7 +523,6 @@ export default function DashboardEmpresaPage() {
           </div>
         </div>
 
-        {/* Rodapé da Sidebar */}
         <div style={{ padding: '1rem', borderTop: `1px solid ${BORDER}`, background: SLATE, flexShrink: 0, height: 65, boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ overflow: 'hidden', paddingRight: 8 }}>
@@ -555,7 +547,6 @@ export default function DashboardEmpresaPage() {
       {/* ── CONTEÚDO PRINCIPAL (DIREITA) ────────────────────────── */}
       <div style={{ marginLeft: 270, flex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
 
-        {/* Header Superior */}
         <header style={{ background: WHITE, borderBottom: `1px solid ${BORDER}`, padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
