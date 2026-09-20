@@ -30,6 +30,53 @@ const ECOSSISTEMA_PRODUTOS = [
   { id: 'academy',      name: 'Academy',       icon: '🎓', active: true,  href: '/academy', desc: 'Plataforma LMS de capacitação' },
 ]
 
+// ── Catálogo Abrangente de Categorias B2B ────────────────────
+const LISTA_CATEGORIAS_B2B = [
+  'Aço, Ferro e Metalurgia',
+  'Alimentos e Bebidas (Atacado)',
+  'Automação Industrial e Robótica',
+  'Automotivo e Peças de Frota',
+  'Borracha e Elastômeros',
+  'Combustíveis, Lubrificantes e Energia',
+  'Construção Civil e Materiais Brutos',
+  'Consultoria, Auditoria e Serviços Profissionais',
+  'Embalagens de Papelão e Ondulados',
+  'Embalagens Plásticas e Flexíveis',
+  'Equipamentos de Proteção Individual (EPI) e Segurança',
+  'Ferramental e Usinagem',
+  'Fardamento, Uniformes e Têxtil',
+  'Hospitalar, Medicamentos e Insumos Médicos',
+  'Informática, Hardware e Periféricos',
+  'Ingredientes e Aditivos Alimentícios',
+  'Limpeza Profissional, Higiene e Descartáveis',
+  'Logística, Fretes e Armazenagem',
+  'Móveis Corporativos e Infraestrutura de Escritório',
+  'Papelaria, Impressão e Suprimentos de Escritório',
+  'Plásticos, Resinas e Polímeros',
+  'Produtos Químicos Industriais',
+  'Refrigeração, Ar Condicionado e HVAC',
+  'Software, SaaS e Licenciamento de TI',
+  'Telecomunicações, Conectividade e Nuvem',
+  'Treinamento e Desenvolvimento de Pessoas',
+  'Vidros, Cerâmicas e Revestimentos',
+  'Outras Categorias'
+]
+
+// ── 10 Maiores Moedas Comercializadas no Brasil + Outras ────
+const LISTA_MOEDAS = [
+  { code: 'BRL', label: 'BRL — Real Brasileiro' },
+  { code: 'USD', label: 'USD — Dólar Americano' },
+  { code: 'EUR', label: 'EUR — Euro' },
+  { code: 'GBP', label: 'GBP — Libra Esterlina' },
+  { code: 'CNY', label: 'CNY — Yuan Chinês' },
+  { code: 'JPY', label: 'JPY — Iene Japonês' },
+  { code: 'CAD', label: 'CAD — Dólar Canadense' },
+  { code: 'AUD', label: 'AUD — Dólar Australiano' },
+  { code: 'CHF', label: 'CHF — Franco Suíço' },
+  { code: 'ARS', label: 'ARS — Peso Argentino' },
+  { code: 'OUTRAS', label: 'Outras Moedas' }
+]
+
 function Spinner() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: SLATE }}>
@@ -55,15 +102,20 @@ export default function ConfiguracoesEmpresaPage() {
   const [erro, setErro]             = useState('')
   const [saindo, setSaindo]         = useState(false)
 
+  // Estados de busca e seleção de categorias
+  const [buscaCategoria, setBuscaCategoria] = useState('')
+  const [categoriasSelecionadas, setCategoriasSelecionadas] = useState<string[]>([])
+
+  // Estado de moedas selecionadas
+  const [moedasSelecionadas, setMoedasSelecionadas] = useState<string[]>(['BRL'])
+
   const [form, setForm] = useState({
     companyName: '',
     cnpj: '',
     segmentoEmpresa: 'COMERCIO',
     faturamentoAnual: 'R$ 4.8Mi a R$ 50Mi (Média)',
     gastoComprasAno: 'R$ 500k a R$ 2Mi/ano',
-    categoriasPraticadas: '',
     escopoMercado: 'NACIONAL',
-    moedasUtilizadas: 'BRL',
   })
 
   const carregarDados = useCallback(async (uid: string) => {
@@ -78,10 +130,22 @@ export default function ConfiguracoesEmpresaPage() {
         segmentoEmpresa: org.segmentoEmpresa || 'COMERCIO',
         faturamentoAnual: org.faturamentoAnual || 'R$ 4.8Mi a R$ 50Mi (Média)',
         gastoComprasAno: org.gastoComprasAno || 'R$ 500k a R$ 2Mi/ano',
-        categoriasPraticadas: org.categoriasPraticadas || '',
         escopoMercado: org.escopoMercado || 'NACIONAL',
-        moedasUtilizadas: org.moedasUtilizadas || 'BRL',
       })
+
+      if (org.categoriasPraticadas) {
+        const cats = Array.isArray(org.categoriasPraticadas)
+          ? org.categoriasPraticadas
+          : String(org.categoriasPraticadas).split(',').map(c => c.trim()).filter(Boolean)
+        setCategoriasSelecionadas(cats)
+      }
+
+      if (org.moedasUtilizadas) {
+        const mds = Array.isArray(org.moedasUtilizadas)
+          ? org.moedasUtilizadas
+          : String(org.moedasUtilizadas).split(',').map(m => m.trim()).filter(Boolean)
+        setMoedasSelecionadas(mds.length > 0 ? mds : ['BRL'])
+      }
     } else {
       setErro(res.error || 'Não foi possível carregar os dados da empresa.')
     }
@@ -107,6 +171,18 @@ export default function ConfiguracoesEmpresaPage() {
     router.replace('/login')
   }
 
+  const toggleCategoria = (cat: string) => {
+    setCategoriasSelecionadas(prev =>
+      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+    )
+  }
+
+  const toggleMoeda = (code: string) => {
+    setMoedasSelecionadas(prev =>
+      prev.includes(code) ? prev.filter(m => m !== code) : [...prev, code]
+    )
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!orgId) return
@@ -117,13 +193,13 @@ export default function ConfiguracoesEmpresaPage() {
     const res = await updateCompanyData({
       organizationId: orgId,
       companyName: form.companyName.trim(),
-      cnpj: form.cnpj.trim(),
+      cnpj: form.cnpj.trim(), // Agora opcional
       faturamentoAnual: form.faturamentoAnual,
       gastoComprasAno: form.gastoComprasAno,
       segmentoEmpresa: form.segmentoEmpresa,
       escopoMercado: form.escopoMercado,
-      categoriasPraticadas: form.categoriasPraticadas.split(',').map(c => c.trim()),
-      moedasUtilizadas: form.moedasUtilizadas.split(',').map(m => m.trim()),
+      categoriasPraticadas: categoriasSelecionadas,
+      moedasUtilizadas: moedasSelecionadas,
     })
 
     setSalvando(false)
@@ -134,6 +210,10 @@ export default function ConfiguracoesEmpresaPage() {
       setErro(res.error || 'Erro ao atualizar cadastro.')
     }
   }
+
+  const categoriasFiltradas = LISTA_CATEGORIAS_B2B.filter(cat =>
+    cat.toLowerCase().includes(buscaCategoria.toLowerCase())
+  )
 
   const nomeUsuario = (user?.user_metadata?.nome_completo as string | undefined)?.split(' ')[0] ?? user?.email?.split('@')[0] ?? 'Empresa'
 
@@ -253,7 +333,7 @@ export default function ConfiguracoesEmpresaPage() {
           </div>
         </header>
 
-        <main style={{ padding: '2rem', maxWidth: 800, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+        <main style={{ padding: '2rem', maxWidth: 840, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
 
           {mensagemSucesso && (
             <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10, padding: '12px 16px', marginBottom: '1.5rem', color: '#065F46', fontSize: 13, fontWeight: 700 }}>
@@ -281,9 +361,9 @@ export default function ConfiguracoesEmpresaPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: '1.25rem' }}>
                 <div>
-                  <label style={labelStyle}>CNPJ *</label>
+                  <label style={labelStyle}>CNPJ (Opcional)</label>
                   <input
-                    type="text" required
+                    type="text" placeholder="00.000.000/0001-00 (Opcional para PF)"
                     value={form.cnpj} onChange={e => setForm({ ...form, cnpj: e.target.value })}
                     style={inputStyle}
                   />
@@ -298,7 +378,7 @@ export default function ConfiguracoesEmpresaPage() {
                     <option value="COMERCIO">Comércio</option>
                     <option value="DISTRIBUIDORA">Distribuidora</option>
                     <option value="SERVICOS">Prestadora de Serviços</option>
-                    <option value="PESSOA_FISICA">Produtor / PF</option>
+                    <option value="PESSOA_FISICA">Pessoa Física / Produtor Rural</option>
                   </select>
                 </div>
               </div>
@@ -330,13 +410,52 @@ export default function ConfiguracoesEmpresaPage() {
                 </div>
               </div>
 
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label style={labelStyle}>Categorias Principais de Compras *</label>
+              {/* ── SELETOR COMPLETO DE CATEGORIAS COM BUSCA ────────────────── */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={labelStyle}>Categorias Principais de Compras (Selecione uma ou mais) *</label>
+                
                 <input
-                  type="text" required placeholder="Ex: Embalagens, Papelão, Aço, Insumos hospitalares"
-                  value={form.categoriasPraticadas} onChange={e => setForm({ ...form, categoriasPraticadas: e.target.value })}
-                  style={inputStyle}
+                  type="text"
+                  placeholder="🔎 Digite para pesquisar seu ramo de atuação (ex: Embalagens, Aço, TI)..."
+                  value={buscaCategoria}
+                  onChange={e => setBuscaCategoria(e.target.value)}
+                  style={{ ...inputStyle, marginBottom: 10 }}
                 />
+
+                <div style={{
+                  maxHeight: 180, overflowY: 'auto', border: `1px solid ${BORDER}`,
+                  borderRadius: 8, background: SLATE, padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 6
+                }}>
+                  {categoriasFiltradas.length === 0 ? (
+                    <p style={{ fontSize: 12, color: MUTED, margin: '6px 0' }}>Nenhuma categoria encontrada com esse termo.</p>
+                  ) : (
+                    categoriasFiltradas.map(cat => {
+                      const checked = categoriasSelecionadas.includes(cat)
+                      return (
+                        <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: NAVY, cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleCategoria(cat)}
+                            style={{ accentColor: E, cursor: 'pointer' }}
+                          />
+                          <span>{cat}</span>
+                        </label>
+                      )
+                    })
+                  )}
+                </div>
+
+                {categoriasSelecionadas.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                    {categoriasSelecionadas.map(cat => (
+                      <span key={cat} style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {cat}
+                        <button type="button" onClick={() => toggleCategoria(cat)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#065F46', padding: 0, fontSize: 12 }}>✕</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: '2rem' }}>
@@ -351,13 +470,26 @@ export default function ConfiguracoesEmpresaPage() {
                     <option value="AMBOS">Nacional & Importado</option>
                   </select>
                 </div>
+
+                {/* ── MÚLTIPLAS MOEDAS COM CHECKBOXES ────────────────────────── */}
                 <div>
-                  <label style={labelStyle}>Moedas Utilizadas</label>
-                  <input
-                    type="text" placeholder="Ex: BRL, USD, EUR"
-                    value={form.moedasUtilizadas} onChange={e => setForm({ ...form, moedasUtilizadas: e.target.value })}
-                    style={inputStyle}
-                  />
+                  <label style={labelStyle}>Moedas Utilizadas (Multipla Seleção)</label>
+                  <div style={{ border: `1px solid ${BORDER}`, borderRadius: 8, background: SLATE, padding: '8px 12px', maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {LISTA_MOEDAS.map(m => {
+                      const checked = moedasSelecionadas.includes(m.code)
+                      return (
+                        <label key={m.code} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: NAVY, cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleMoeda(m.code)}
+                            style={{ accentColor: E, cursor: 'pointer' }}
+                          />
+                          <span>{m.label}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
 
