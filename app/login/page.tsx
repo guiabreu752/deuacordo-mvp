@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
-// ── Paleta ────────────────────────────────────────────────────
+// ── Paleta Executiva DeuAcordo ──────────────────────────────
 const NAVY   = '#0F172A'
 const E      = '#10B981'
 const MUTED  = '#64748B'
@@ -13,10 +13,8 @@ const BORDER = '#E2E8F0'
 const RED    = '#DC2626'
 const WHITE  = '#FFFFFF'
 const SLATE  = '#F8FAFC'
-const AMBER  = '#F59E0B'
 
-type Tab  = 'entrar' | 'criar'
-type Role = 'empresa' | 'closer'
+type Tab = 'entrar' | 'criar'
 
 // ── Redirect Unificado para o Hub Central ──────────────────────
 function redirectToHub(router: ReturnType<typeof useRouter>) {
@@ -94,61 +92,7 @@ function Alerta({ tipo, texto }: { tipo: 'erro' | 'sucesso'; texto: string }) {
   )
 }
 
-// ── Seletor de perfil (Sign Up) ───────────────────────────────
-function SeletorPerfil({ role, onChange }: { role: Role; onChange: (r: Role) => void }) {
-  const opcoes: { value: Role; emoji: string; titulo: string; desc: string; accent: string; accentBg: string }[] = [
-    {
-      value:    'empresa',
-      emoji:    '🏢',
-      titulo:   'Empresa',
-      desc:     'Quero economizar nas compras',
-      accent:   E,
-      accentBg: '#ECFDF5',
-    },
-    {
-      value:    'closer',
-      emoji:    '🎯',
-      titulo:   'Closer / Consultor',
-      desc:     'Quero negociar e ganhar comissão',
-      accent:   AMBER,
-      accentBg: '#FFFBEB',
-    },
-  ]
-
-  return (
-    <div style={{ marginBottom: '1.25rem' }}>
-      <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        Meu perfil principal *
-      </p>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        {opcoes.map(op => {
-          const selected = role === op.value
-          return (
-            <button
-              key={op.value}
-              type="button"
-              onClick={() => onChange(op.value)}
-              style={{
-                padding: '12px 10px', borderRadius: 10, cursor: 'pointer',
-                border: `2px solid ${selected ? op.accent : BORDER}`,
-                background: selected ? op.accentBg : WHITE,
-                textAlign: 'left', transition: 'all 0.15s',
-              }}
-            >
-              <div style={{ fontSize: 20, marginBottom: 4 }}>{op.emoji}</div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: selected ? op.accent : NAVY, marginBottom: 2 }}>
-                {op.titulo}
-              </div>
-              <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.35 }}>{op.desc}</div>
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ── Página principal ──────────────────────────────────────────
+// ── Página Principal Acesso Único ─────────────────────────────
 export default function LoginPage() {
   const router = useRouter()
 
@@ -156,7 +100,6 @@ export default function LoginPage() {
   const [email, setEmail]     = useState('')
   const [senha, setSenha]     = useState('')
   const [nome, setNome]       = useState('')
-  const [role, setRole]       = useState<Role>('empresa')
   const [erro, setErro]       = useState('')
   const [sucesso, setSucesso] = useState('')
   const [loading, setLoading] = useState(false)
@@ -187,7 +130,6 @@ export default function LoginPage() {
       })
       if (error) throw error
 
-      // Redireciona para o Hub Central Unificado
       redirectToHub(router)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro desconhecido.'
@@ -197,10 +139,10 @@ export default function LoginPage() {
     }
   }
 
-  // ── Cadastro com perfil padrão e redirect para o Hub ────────
+  // ── Cadastro Único e Direto ───────────────────────────────
   async function criar(e: React.FormEvent) {
     e.preventDefault(); limpar()
-    if (!nome.trim())     { setErro('Informe seu nome.'); return }
+    if (!nome.trim())     { setErro('Informe seu nome completo.'); return }
     if (!email)           { setErro('Informe seu e-mail.'); return }
     if (senha.length < 6) { setErro('A senha deve ter pelo menos 6 caracteres.'); return }
     setLoading(true)
@@ -211,12 +153,11 @@ export default function LoginPage() {
         options: {
           data: {
             nome_completo: nome.trim(),
-            role,
           },
         },
       })
       if (error) throw error
-      setSucesso('Conta criada com sucesso! Confirme seu e-mail e faça login para acessar o Hub.')
+      setSucesso('Conta criada com sucesso! Faça login para aceder ao Hub.')
       setTab('entrar')
       setSenha('')
     } catch (err: unknown) {
@@ -259,32 +200,23 @@ export default function LoginPage() {
           <div style={{
             display: 'inline-block', background: '#ECFDF5', color: '#065F46',
             fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 20,
-            marginBottom: '1.5rem', letterSpacing: '0.06em',
+            marginBottom: '1.5rem', letterSpacing: '0.06em', textTransform: 'uppercase'
           }}>
-            SUCCESS FEE — SEM SAVING, SEM CUSTO
+            Acesso Único à Plataforma
           </div>
           <h1 style={{ fontSize: 30, fontWeight: 800, color: NAVY, lineHeight: 1.25, letterSpacing: '-0.03em', margin: '0 0 1.5rem' }}>
             Negociação estruturada com{' '}
             <span style={{ color: E, fontStyle: 'italic' }}>resultado garantido</span>.
           </h1>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
-            {[
-              { emoji: '🏢', titulo: 'Para empresas', desc: 'Cadastre demandas e pague só 20% do saving real gerado.' },
-              { emoji: '🎯', titulo: 'Para Closers', desc: 'Negocie mesas e receba 70% do fee como comissão.' },
-            ].map(p => (
-              <div key={p.titulo} style={{ background: SLATE, borderRadius: 10, padding: '1rem', border: `1px solid ${BORDER}` }}>
-                <div style={{ fontSize: 18, marginBottom: 6 }}>{p.emoji}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 3 }}>{p.titulo}</div>
-                <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.4 }}>{p.desc}</div>
-              </div>
-            ))}
-          </div>
+          <p style={{ color: MUTED, fontSize: 14, lineHeight: 1.6, marginBottom: '2rem' }}>
+            Acesse as ferramentas de inteligência de compras, cotações B2B, leilões e ecossistema de soluções da DeuAcordo.com.
+          </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', paddingTop: '1.5rem', borderTop: `1px solid ${BORDER}` }}>
             {[
               { valor: '20%', label: 'fee só sobre saving real' },
-              { valor: '100%', label: 'risco zero para o cliente' },
+              { valor: '100%', label: 'risco zero garantido' },
               { valor: '15 dias', label: 'prazo médio de resultado' },
             ].map(({ valor, label }) => (
               <div key={label}>
@@ -329,7 +261,7 @@ export default function LoginPage() {
               <>
                 <h2 style={{ fontSize: 22, fontWeight: 800, color: NAVY, margin: '0 0 0.25rem' }}>Bem-vindo de volta.</h2>
                 <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1.75rem' }}>
-                  Acesse a plataforma e navegue livremente pelos módulos de Empresa e Closer.
+                  Acesse o ecossistema e navegue pelos seus módulos ativos.
                 </p>
 
                 <form onSubmit={entrar} noValidate>
@@ -371,16 +303,14 @@ export default function LoginPage() {
                 <p style={{ fontSize: 13, color: MUTED, margin: '0 0 1.5rem' }}>Gratuito. Sem cartão de crédito.</p>
 
                 <form onSubmit={criar} noValidate>
-                  <SeletorPerfil role={role} onChange={setRole} />
-
-                  <Campo label="Seu nome" id="criar-nome" value={nome}
+                  <Campo label="Seu nome completo" id="criar-nome" value={nome}
                     onChange={setNome} placeholder="João Silva" autoComplete="name" />
                   <Campo label="E-mail" id="criar-email" type="email" value={email}
                     onChange={setEmail} placeholder="seu@email.com.br" autoComplete="email" />
                   <Campo label="Senha (mínimo 6 caracteres)" id="criar-senha" type="password" value={senha}
                     onChange={setSenha} placeholder="••••••••" autoComplete="new-password" />
 
-                  <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ marginBottom: '1.25rem' }}>
                     {[
                       { ok: senha.length >= 6, label: 'Pelo menos 6 caracteres' },
                       { ok: /[A-Z]/.test(senha), label: 'Uma letra maiúscula (recomendado)' },
@@ -400,18 +330,13 @@ export default function LoginPage() {
 
                   <button type="submit" disabled={loading} style={{
                     width: '100%', padding: '13px', marginTop: 4,
-                    background: loading ? '#A7F3D0' : role === 'closer' ? AMBER : E,
+                    background: loading ? '#A7F3D0' : E,
                     border: 'none', borderRadius: 8,
-                    color: loading ? '#065F46' : role === 'closer' ? NAVY : WHITE,
+                    color: loading ? '#065F46' : WHITE,
                     fontSize: 15, fontWeight: 700, cursor: loading ? 'wait' : 'pointer',
                     transition: 'background 0.15s',
                   }}>
-                    {loading
-                      ? 'Criando conta...'
-                      : role === 'empresa'
-                        ? 'Criar conta de Empresa →'
-                        : 'Criar conta de Closer →'
-                    }
+                    {loading ? 'Criando conta...' : 'Criar minha conta gratuita →'}
                   </button>
                 </form>
 
