@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 import { getDealsByUser, createDeal, aprovarSaving } from '@/app/actions/deals'
-import { registerCompanyOnDemand } from '@/app/actions/user'
+import { registerCompanyOnDemand, getCompanyData } from '@/app/actions/user'
 
 // ── Paleta Executiva DeuAcordo ──────────────────────────────
 const NAVY   = '#0F172A'
@@ -32,6 +32,20 @@ const ECOSSISTEMA_PRODUTOS = [
   { id: 'academy',      name: 'Academy',       icon: '🎓', active: true,  href: '/academy', desc: 'Plataforma LMS de capacitação' },
 ]
 
+// ── Categorias B2B Abrangentes ──────────────────────────────
+const LISTA_CATEGORIAS_B2B = [
+  'Aço, Ferro e Metalurgia',
+  'Alimentos e Bebidas (Atacado)',
+  'Automação Industrial e Robótica',
+  'Automotivo e Peças de Frota',
+  'Embalagens de Papelão e Ondulados',
+  'Embalagens Plásticas e Flexíveis',
+  'Logística, Fretes e Armazenagem',
+  'Software, SaaS e Licenciamento de TI',
+  'Telecomunicações e Nuvem',
+  'Outras Categorias'
+]
+
 interface FormNovaMesa {
   produto: string
   quantidade: string
@@ -39,12 +53,14 @@ interface FormNovaMesa {
   baseline: string
   preco_alvo: string
   prazo: string
+  modeloAcordo: 'SAVING_20' | 'OPERACAO_1_5'
+  categoria: string
+  requisitosCloser: string
+  visibilidade: 'PUBLICA' | 'PRIVADA'
 }
 
 const brl = (n: number) =>
   n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-
-const calcFee = (saving: number) => saving * 0.20
 
 function statusCfg(s: string) {
   const m: Record<string, { bg: string; color: string }> = {
@@ -118,9 +134,12 @@ function ModalNovaMesa({ onClose, onSalvar, salvando }: {
   onSalvar: (f: FormNovaMesa) => Promise<void>
   salvando: boolean
 }) {
-  const [form, setForm]           = useState<FormNovaMesa>({ produto: '', quantidade: '1', unidade: 'un', baseline: '', preco_alvo: '', prazo: '15' })
+  const [form, setForm]           = useState<FormNovaMesa>({
+    produto: '', quantidade: '1', unidade: 'un', baseline: '', preco_alvo: '', prazo: '15',
+    modeloAcordo: 'SAVING_20', categoria: 'Embalagens de Papelão e Ondulados', requisitosCloser: '', visibilidade: 'PUBLICA'
+  })
   const [erroLocal, setErroLocal] = useState('')
-  const set = (k: keyof FormNovaMesa) => (v: string) => setForm(p => ({ ...p, [k]: v }))
+  const set = (k: keyof FormNovaMesa) => (v: any) => setForm(p => ({ ...p, [k]: v }))
 
   const preview = (() => {
     const a = parseFloat(form.baseline.replace(',', '.')) || 0
@@ -132,8 +151,7 @@ function ModalNovaMesa({ onClose, onSalvar, salvando }: {
     const savingTotal = savingUnit * qty
     return {
       valor: savingTotal,
-      pct: ((savingUnit / a) * 100).toFixed(1),
-      fee: savingTotal * 0.2
+      pct: ((savingUnit / a) * 100).toFixed(1)
     }
   })()
 
@@ -159,10 +177,10 @@ function ModalNovaMesa({ onClose, onSalvar, salvando }: {
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 500, padding: '2rem', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
+      <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 580, maxHeight: '90vh', overflowY: 'auto', padding: '2rem', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: 0 }}>Abrir Nova Mesa de Negociação</h2>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: 0 }}>Abrir Nova Mesa de Negociação B2B</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: MUTED, padding: 0 }}>✕</button>
         </div>
 
@@ -177,7 +195,23 @@ function ModalNovaMesa({ onClose, onSalvar, salvando }: {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: '1rem' }}>
           <div>
-            <label style={labelStyle}>Quantidade *</label>
+            <label style={labelStyle}>Categoria *</label>
+            <select value={form.categoria} onChange={e => set('categoria')(e.target.value)} style={inputStyle}>
+              {LISTA_CATEGORIAS_B2B.map(c => <option key={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Modelo de Acordo *</label>
+            <select value={form.modeloAcordo} onChange={e => set('modeloAcordo')(e.target.value)} style={inputStyle}>
+              <option value="SAVING_20">Success Fee (20% sobre Saving)</option>
+              <option value="OPERACAO_1_5">Taxa de Operação (1.5% sobre Valor)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: '1rem' }}>
+          <div>
+            <label style={labelStyle}>Qtd *</label>
             <input
               type="number" value={form.quantidade} placeholder="1"
               onChange={e => set('quantidade')(e.target.value)}
@@ -185,47 +219,50 @@ function ModalNovaMesa({ onClose, onSalvar, salvando }: {
             />
           </div>
           <div>
-            <label style={labelStyle}>Unidade</label>
-            <select value={form.unidade} onChange={e => set('unidade')(e.target.value)} style={inputStyle}>
-              {['un', 'kg', 'ton', 'cx', 'pç', 'litro', 'm²', 'hora'].map(u => <option key={u}>{u}</option>)}
-            </select>
+            <label style={labelStyle}>Preço Atual (R$) *</label>
+            <input
+              value={form.baseline} placeholder="Ex: 3.50"
+              onChange={e => set('baseline')(e.target.value)}
+              style={inputStyle}
+            />
+          </div>
+          <div>
+            <label style={labelStyle}>Preço Alvo (R$)</label>
+            <input
+              value={form.preco_alvo} placeholder="Ex: 2.80"
+              onChange={e => set('preco_alvo')(e.target.value)}
+              style={inputStyle}
+            />
           </div>
         </div>
 
         <div style={{ marginBottom: '1rem' }}>
-          <label style={labelStyle}>Preço unitário atual pago (R$) *</label>
-          <input
-            value={form.baseline} placeholder="Ex: 3.50"
-            onChange={e => set('baseline')(e.target.value)}
-            style={inputStyle}
+          <label style={labelStyle}>Requisitos e Perfil do Negociador (Closer)</label>
+          <textarea
+            value={form.requisitosCloser}
+            placeholder="Ex: Experiência prévia em negociação industrial, capacidade de fechar volume rápido..."
+            onChange={e => set('requisitosCloser')(e.target.value)}
+            style={{ ...inputStyle, height: 70, resize: 'vertical' }}
           />
         </div>
 
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={labelStyle}>Preço alvo unitário desejado (R$)</label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '1.25rem', background: SLATE, padding: '10px 14px', borderRadius: 8, border: `1px solid ${BORDER}` }}>
           <input
-            value={form.preco_alvo} placeholder="Ex: 2.80 (opcional)"
-            onChange={e => set('preco_alvo')(e.target.value)}
-            style={inputStyle}
+            type="checkbox"
+            checked={form.visibilidade === 'PRIVADA'}
+            onChange={e => set('visibilidade')(e.target.checked ? 'PRIVADA' : 'PUBLICA')}
+            style={{ width: 16, height: 16, accentColor: E, cursor: 'pointer' }}
           />
-        </div>
-
-        <div style={{ marginBottom: '1.25rem' }}>
-          <label style={labelStyle}>Prazo para resultado</label>
-          <select value={form.prazo} onChange={e => set('prazo')(e.target.value)} style={inputStyle}>
-            <option value="7">7 dias — urgente</option>
-            <option value="15">15 dias — padrão</option>
-            <option value="30">30 dias — sem pressa</option>
-          </select>
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 700, color: NAVY, margin: 0 }}>Mesa Privada</p>
+            <p style={{ fontSize: 11, color: MUTED, margin: 0 }}>Visível apenas para Closers homologados e especializados neste segmento.</p>
+          </div>
         </div>
 
         {preview && (
           <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10, padding: '0.9rem', marginBottom: '1rem' }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: '#047857', letterSpacing: '0.07em', margin: '0 0 4px' }}>PRÉVIA DO SAVING TOTAL ESTIMADO</p>
-            <p style={{ fontSize: 22, fontWeight: 800, color: E, margin: '0 0 2px' }}>{preview.pct}% de economia</p>
-            <p style={{ fontSize: 12, color: '#065F46', margin: 0 }}>
-              Economia estimada: {brl(preview.valor)} · Fee DeuAcordo (20%): {brl(preview.fee)}
-            </p>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#047857', letterSpacing: '0.07em', margin: '0 0 4px' }}>GANHO BRUTO ESTIMADO PARA SUA EMPRESA</p>
+            <p style={{ fontSize: 20, fontWeight: 800, color: E, margin: '0 0 2px' }}>{brl(preview.valor)} ({preview.pct}% de economia potencial)</p>
           </div>
         )}
 
@@ -240,7 +277,7 @@ function ModalNovaMesa({ onClose, onSalvar, salvando }: {
             Cancelar
           </button>
           <button onClick={submit} disabled={salvando} style={{ flex: 2, padding: '12px', background: salvando ? '#A7F3D0' : E, border: 'none', borderRadius: 8, color: WHITE, fontSize: 14, fontWeight: 700, cursor: salvando ? 'wait' : 'pointer' }}>
-            {salvando ? 'Salvando...' : 'Abrir Mesa →'}
+            {salvando ? 'Salvando...' : 'Abrir Mesa de Negociação →'}
           </button>
         </div>
       </div>
@@ -259,7 +296,6 @@ function ModalDetalhes({ mesa, onClose, onAprovar, aprovando }: {
   const targetUnit  = mesa.targetValue ?? 0
   const targetTotal = targetUnit * qty
   const saving      = mesa.savingValue ?? 0
-  const fee         = calcFee(saving)
   const pctSaving   = targetTotal > 0 ? ((saving / targetTotal) * 100).toFixed(1) : '0'
 
   return (
@@ -282,11 +318,10 @@ function ModalDetalhes({ mesa, onClose, onAprovar, aprovando }: {
 
         <div style={{ padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
-          <div style={{ background: SLATE, borderRadius: 10, padding: '1.25rem', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+          <div style={{ background: SLATE, borderRadius: 10, padding: '1.25rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             {[
-              { label: `BASELINE (${qty} UN)`, value: brl(targetTotal), color: NAVY },
-              { label: 'SAVING GERADO', value: saving > 0 ? `${brl(saving)} (${pctSaving}%)` : '—', color: E },
-              { label: 'FEE DEUACORDO (20%)', value: saving > 0 ? brl(fee) : '—', color: NAVY },
+              { label: `BASELINE TOTAL (${qty} UN)`, value: brl(targetTotal), color: NAVY },
+              { label: 'GANHO / SAVING LÍQUIDO', value: saving > 0 ? `${brl(saving)} (${pctSaving}%)` : '—', color: E },
             ].map(({ label, value, color }) => (
               <div key={label}>
                 <p style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: '0.06em', margin: '0 0 4px' }}>{label}</p>
@@ -313,8 +348,7 @@ function ModalDetalhes({ mesa, onClose, onAprovar, aprovando }: {
                 🎉 Proposta disponível para aprovação!
               </p>
               <p style={{ fontSize: 13, color: '#047857', margin: '0 0 1rem', lineHeight: 1.5 }}>
-                Saving de <strong>{pctSaving}%</strong> ({brl(saving)}) gerado para sua empresa.
-                Fee a faturar: <strong>{brl(fee)}</strong>.
+                Ganho de <strong>{pctSaving}%</strong> ({brl(saving)}) gerado para sua operação com sucesso.
               </p>
               <button
                 onClick={() => onAprovar(mesa.id)}
@@ -338,6 +372,7 @@ function ModalDetalhes({ mesa, onClose, onAprovar, aprovando }: {
 export default function DashboardEmpresaPage() {
   const router = useRouter()
   const [user, setUser]               = useState<User | null>(null)
+  const [empresaNome, setEmpresaNome] = useState('Minha Empresa B2B')
   const [mesas, setMesas]             = useState<any[]>([])
   const [carregando, setCarregando]   = useState(true)
   const [erroFetch, setErroFetch]     = useState('')
@@ -347,14 +382,19 @@ export default function DashboardEmpresaPage() {
   const [aprovando, setAprovando]     = useState(false)
   const [saindo, setSaindo]           = useState(false)
 
-  // Buscar apenas as mesas cadastradas pelo próprio usuário
-  const buscarMesas = useCallback(async (userId: string) => {
+  const buscarDadosEmpresaEMesas = useCallback(async (userId: string) => {
     setErroFetch('')
-    const res = await getDealsByUser(userId)
-    if (res.success && res.data) {
-      setMesas(res.data)
+    const [dealsRes, compRes] = await Promise.all([
+      getDealsByUser(userId),
+      getCompanyData(userId)
+    ])
+    if (dealsRes.success && dealsRes.data) {
+      setMesas(dealsRes.data)
     } else {
-      setErroFetch(res.error || 'Erro ao carregar mesas de negociação.')
+      setErroFetch(dealsRes.error || 'Erro ao carregar mesas de negociação.')
+    }
+    if (compRes.success && compRes.organization?.name) {
+      setEmpresaNome(compRes.organization.name)
     }
   }, [])
 
@@ -382,7 +422,7 @@ export default function DashboardEmpresaPage() {
         }
       }
 
-      await buscarMesas(u.id)
+      await buscarDadosEmpresaEMesas(u.id)
       if (mounted) setCarregando(false)
     }
     init()
@@ -391,7 +431,7 @@ export default function DashboardEmpresaPage() {
       if (event === 'SIGNED_OUT') router.replace('/login')
     })
     return () => { mounted = false; subscription.unsubscribe() }
-  }, [router, buscarMesas])
+  }, [router, buscarDadosEmpresaEMesas])
 
   async function sair() {
     setSaindo(true)
@@ -419,7 +459,7 @@ export default function DashboardEmpresaPage() {
 
       if (!res.success) throw new Error(res.error)
 
-      await buscarMesas(user.id)
+      await buscarDadosEmpresaEMesas(user.id)
       setModalNova(false)
     } catch (err: unknown) {
       setErroFetch(err instanceof Error ? err.message : 'Erro ao criar mesa.')
@@ -435,7 +475,7 @@ export default function DashboardEmpresaPage() {
       const res = await aprovarSaving(mesaId)
       if (!res.success) throw new Error(res.error)
 
-      await buscarMesas(user.id)
+      await buscarDadosEmpresaEMesas(user.id)
       setMesaDetalhe(null)
     } catch (err: unknown) {
       setErroFetch(err instanceof Error ? err.message : 'Erro ao aprovar mesa.')
@@ -450,7 +490,6 @@ export default function DashboardEmpresaPage() {
   const mesasAgAprv   = mesas.filter(m => m.status === 'PENDING_APPROVAL').length
   const mesasConc     = mesas.filter(m => m.status === 'APPROVED').length
   const taxaMedia     = totalBaseline > 0 ? (totalSaving / totalBaseline * 100) : 0
-  const nomeUsuario   = (user?.user_metadata?.nome_completo as string | undefined)?.split(' ')[0] ?? user?.email?.split('@')[0] ?? 'Empresa'
 
   if (carregando) return <Spinner />
 
@@ -521,7 +560,6 @@ export default function DashboardEmpresaPage() {
               ))}
             </div>
 
-            {/* ── BOTÃO CONFIGURAÇÕES NA SIDEBAR ────────────────── */}
             <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 8 }}>
               GERENCIAMENTO
             </p>
@@ -539,8 +577,7 @@ export default function DashboardEmpresaPage() {
                 color: NAVY,
                 fontSize: 13,
                 fontWeight: 600,
-                textDecoration: 'none',
-                transition: 'all 0.15s ease'
+                textDecoration: 'none'
               }}
             >
               <span style={{ fontSize: 16 }}>⚙️</span>
@@ -553,7 +590,7 @@ export default function DashboardEmpresaPage() {
         <div style={{ padding: '1rem', borderTop: `1px solid ${BORDER}`, background: SLATE, flexShrink: 0, height: 65, boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ overflow: 'hidden', paddingRight: 8 }}>
-              <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nomeUsuario}</p>
+              <p style={{ fontSize: 12, fontWeight: 700, color: NAVY, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{empresaNome}</p>
               <p style={{ fontSize: 10, color: MUTED, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.email}</p>
             </div>
             <button
@@ -581,17 +618,17 @@ export default function DashboardEmpresaPage() {
                 ← Voltar para o Dashboard Hub
               </Link>
             </div>
-            <h1 style={{ fontSize: 18, fontWeight: 800, color: NAVY, margin: 0 }}>
-              Painel da Empresa
+            <h1 style={{ fontSize: 20, fontWeight: 800, color: NAVY, margin: 0 }}>
+              {empresaNome}
             </h1>
             <p style={{ fontSize: 12, color: MUTED, margin: '2px 0 0' }}>
-              Gerencie suas solicitações de compras, aprove savings e acompanhe suas economias.
+              Painel Corporativo de Gestão de Mesas e Ganhos B2B (Identidade Preservada)
             </p>
           </div>
 
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <span style={{ background: '#ECFDF5', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 6, border: '1px solid #A7F3D0' }}>
-              🏢 Painel da Empresa
+            <span style={{ background: '#ECFDF5', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid #A7F3D0' }}>
+              🏢 Conta Protegida & Verificada
             </span>
           </div>
         </header>
@@ -606,17 +643,34 @@ export default function DashboardEmpresaPage() {
             }}>
               <span style={{ fontSize: 20 }}>⏳</span>
               <p style={{ fontSize: 13, color: '#92400E', margin: 0, fontWeight: 600 }}>
-                {mesasAgAprv} mesa{mesasAgAprv > 1 ? 's' : ''} aguardando sua aprovação — clique em "Ver Detalhes" para revisar e homologar o saving.
+                {mesasAgAprv} mesa{mesasAgAprv > 1 ? 's' : ''} aguardando sua aprovação — clique para revisar e homologar o ganho.
               </p>
             </div>
           )}
 
+          {/* Métricas Principais focadas em Ganhos */}
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
-            <MetricCard label="SAVING TOTAL ACUMULADO"  value={brl(totalSaving)}           sub="economia real gerada" accent />
-            <MetricCard label="MESAS ATIVAS"            value={String(mesasAtivas)}         sub="em negociação agora" />
-            <MetricCard label="AGUARDANDO APROVAÇÃO"    value={String(mesasAgAprv)}         sub="proposta disponível" />
-            <MetricCard label="MESAS CONCLUÍDAS"        value={String(mesasConc)}           sub="saving confirmado" />
-            <MetricCard label="TAXA MÉDIA DE SAVING"    value={`${taxaMedia.toFixed(1)}%`} sub="nas negociações" />
+            <MetricCard label="GANHOS E ECONOMIA TOTAL" value={brl(totalSaving)}          sub="benefício bruto gerado para operação" accent />
+            <MetricCard label="MESAS ATIVAS"            value={String(mesasAtivas)}        sub="em negociação agora" />
+            <MetricCard label="AGUARDANDO APROVAÇÃO"    value={String(mesasAgAprv)}        sub="proposta disponível" />
+            <MetricCard label="MESAS CONCLUÍDAS"        value={String(mesasConc)}          sub="saving confirmado" />
+          </div>
+
+          {/* Gráfico de Evolução Temporal */}
+          <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '1.5rem', marginBottom: '2rem' }}>
+            <h3 style={{ fontSize: 14, fontWeight: 800, color: NAVY, margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Evolução de Ganhos e Performance Temporal</h3>
+            <p style={{ fontSize: 12, color: MUTED, margin: '0 0 1.25rem' }}>Acompanhamento contínuo da expansão do saving gerado pelas mesas ativas.</p>
+            <div style={{ height: 160, background: SLATE, borderRadius: 8, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', padding: '1rem', border: `1px dashed ${BORDER}` }}>
+              {['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set'].map((mes, idx) => {
+                const altura = Math.min(30 + idx * 12, 130)
+                return (
+                  <div key={mes} style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 28, height: altura, background: E, borderRadius: '4px 4px 0 0', opacity: 0.85 }} />
+                    <span style={{ fontSize: 10, color: MUTED, fontWeight: 700 }}>{mes}</span>
+                  </div>
+                )
+              })}
+            </div>
           </div>
 
           {erroFetch && (
@@ -641,7 +695,7 @@ export default function DashboardEmpresaPage() {
           <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
 
             <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 100px 130px 130px 160px 120px', padding: '10px 16px', background: SLATE, borderBottom: `1px solid ${BORDER}` }}>
-              {['CÓDIGO', 'PRODUTO', 'QTD', 'BASELINE', 'SAVING', 'STATUS', 'AÇÃO'].map(c => (
+              {['CÓDIGO', 'PRODUTO', 'QTD', 'BASELINE', 'GANHO / SAVING', 'STATUS', 'AÇÃO'].map(c => (
                 <span key={c} style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: '0.07em' }}>{c}</span>
               ))}
             </div>
@@ -671,7 +725,8 @@ export default function DashboardEmpresaPage() {
                   <span style={{ fontSize: 11, fontWeight: 700, color: E, fontFamily: 'monospace' }}>#{mesa.id.slice(0, 8).toUpperCase()}</span>
                   <span style={{ fontSize: 13, color: NAVY, fontWeight: 600, paddingRight: 12, lineHeight: 1.35 }}>{mesa.title}</span>
                   <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{qty} un</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{brl((mesa.targetValue ?? 0) * qty)}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }
+                }>{brl((mesa.targetValue ?? 0) * qty)}</span>
                   <span style={{ fontSize: 13, fontWeight: 800, color: (mesa.savingValue ?? 0) > 0 ? E : MUTED }}>
                     {(mesa.savingValue ?? 0) > 0 ? brl(mesa.savingValue) : '—'}
                   </span>
@@ -693,8 +748,7 @@ export default function DashboardEmpresaPage() {
             <div style={{ marginTop: '1.5rem', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ fontSize: 20 }}>💡</span>
               <p style={{ fontSize: 13, color: '#065F46', margin: 0, lineHeight: 1.55 }}>
-                Sua empresa já acumula <strong>{brl(totalSaving)}</strong> em economias homologadas.
-                Fee total investido: <strong>{brl(totalSaving * 0.2)}</strong>.
+                Sua empresa já acumula <strong>{brl(totalSaving)}</strong> em benefícios e ganhos reais gerados pela plataforma.
               </p>
             </div>
           )}
