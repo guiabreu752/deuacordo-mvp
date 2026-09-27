@@ -14,7 +14,7 @@ import {
 } from '@/app/actions/breakdown'
 import { getUserProfileState } from '@/app/actions/user'
 
-// ── DESIGN SYSTEM WORLD-CLASS B2B DEUACORDO (APPLE / STRIPE / RAMP STYLE) ──
+// ── DESIGN SYSTEM B2B DEUACORDO (APPLE / STRIPE STYLE) ──
 const DARK_BG     = '#0F172A' // Dark Slate Executivo
 const DARK_CARD   = '#1E293B' // Card Slate
 const E           = '#10B981' // Verde Neon / Elétrico
@@ -25,7 +25,6 @@ const BORDER      = '#E2E8F0' // Borda Suave Light
 const SLATE       = '#F8FAFC' // Fundo Geral Light
 const WHITE       = '#FFFFFF'
 const RED         = '#EF4444'
-const AMBER       = '#F59E0B'
 
 const ECOSSISTEMA_PRODUTOS = [
   { id: 'deal-desk',    name: 'Deal Desk',     icon: '🤝', active: true,  href: '/dashboard' },
@@ -39,6 +38,17 @@ const ECOSSISTEMA_PRODUTOS = [
   { id: 'route',        name: 'Route',         icon: '🔀', active: false, href: '#' },
   { id: 'club',         name: 'Club',          icon: '💎', active: false, href: '#' },
   { id: 'academy',      name: 'Academy',       icon: '🎓', active: true,  href: '/academy' },
+]
+
+const UNIDADES_MEDIDA = [
+  { label: 'Quilograma (kg)', code: 'kg' },
+  { label: 'Grama (g)', code: 'g' },
+  { label: 'Unidade (un)', code: 'un' },
+  { label: 'Litro (L)', code: 'L' },
+  { label: 'Mililitro (ml)', code: 'ml' },
+  { label: 'Metro (m)', code: 'm' },
+  { label: 'Metro Quadrado (m²)', code: 'm²' },
+  { label: 'Caixa (cx)', code: 'cx' },
 ]
 
 const brl = (n: number) =>
@@ -59,6 +69,13 @@ interface FixedCost {
   value: number
 }
 
+interface RawMaterial {
+  id: string
+  name: string
+  price: number
+  unit: string // 'kg', 'g', 'un', 'L', etc.
+}
+
 export default function AiBreakdownPage() {
   const router = useRouter()
   const [user, setUser]               = useState<User | null>(null)
@@ -68,22 +85,30 @@ export default function AiBreakdownPage() {
   const [salvando, setSalvando]       = useState(false)
   const [selectedId, setSelectedId]   = useState<string | null>(null)
 
-  // 1. Custos Fixos Globais da Empresa
+  // 1. Custos Fixos Globais
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
   const [newFcName, setNewFcName]   = useState('')
   const [newFcValue, setNewFcValue] = useState('')
 
-  // 2. Ficha de Produto & Volume Projetado
+  // 2. Banco / Estoque de Matérias-Primas Cadastradas
+  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([])
+  const [newRmName, setNewRmName]       = useState('')
+  const [newRmPrice, setNewRmPrice]     = useState('')
+  const [newRmUnit, setNewRmUnit]       = useState('kg')
+
+  // 3. Ficha de Produto & Volume Projetado
   const [productName, setProductName]         = useState('')
   const [sellingPrice, setSellingPrice]       = useState('')
   const [projectedVolume, setProjectedVolume] = useState('1000')
   const [markupPercent, setMarkupPercent]     = useState('')
 
-  // Inline Subitem states
+  // Inline Subitem states (Com suporte a Matéria-Prima Pré-Cadastrada)
   const [activeBlockForSub, setActiveBlockForSub] = useState<string | null>(null)
+  const [selectedRmId, setSelectedRmId]         = useState<string>('')
   const [subName, setSubName]                     = useState('')
   const [subQty, setSubQty]                       = useState('1')
-  const [subUnitCost, setSubUnitCost]             = useState('')
+  const [subUnit, setSubUnit]                     = useState('g')
+  const [calculatedSubCost, setCalculatedSubCost] = useState<number>(0)
 
   // Inline Block Renaming
   const [editingBlockId, setEditingBlockId]     = useState<string | null>(null)
@@ -106,9 +131,19 @@ export default function AiBreakdownPage() {
       if (!targetOrgId) targetOrgId = uid
       setOrgId(targetOrgId)
 
+      // Carregar Custos Fixos
       const savedFC = localStorage.getItem(`deuacordo_fc_${targetOrgId}`)
       if (savedFC) setFixedCosts(JSON.parse(savedFC))
       else setFixedCosts([{ id: '1', name: 'Aluguel & Infraestrutura', value: 1000 }])
+
+      // Carregar Matérias-Primas Cadastradas
+      const savedRM = localStorage.getItem(`deuacordo_rm_${targetOrgId}`)
+      if (savedRM) setRawMaterials(JSON.parse(savedRM))
+      else setRawMaterials([
+        { id: '1', name: 'Hambúrguer de Carne 100%', price: 30.00, unit: 'kg' },
+        { id: '2', name: 'Queijo Cheddar Fatiado', price: 45.00, unit: 'kg' },
+        { id: '3', name: 'Pão Brioche com Gergelim', price: 1.50, unit: 'un' }
+      ])
 
       const res = await getBreakdownsByOrganization(targetOrgId)
       if (res.success && res.data) {
@@ -133,6 +168,30 @@ export default function AiBreakdownPage() {
     }
     checkUser()
   }, [router, initData])
+
+  // 🧮 EFEITO PARA CÁLCULO AUTOMÁTICO DO SUBITEM (EX: 200g de Hambúrguer a R$ 30,00/kg = R$ 6,00)
+  useEffect(() => {
+    const rm = rawMaterials.find(m => m.id === selectedRmId)
+    const qty = parseFloat(subQty) || 0
+
+    if (rm) {
+      setSubName(rm.name)
+      let cost = 0
+
+      // Regra de Conversão de Unidades (kg -> g, L -> ml)
+      if (rm.unit === 'kg' && subUnit === 'g') {
+        cost = (rm.price / 1000) * qty
+      } else if (rm.unit === 'L' && subUnit === 'ml') {
+        cost = (rm.price / 1000) * qty
+      } else {
+        cost = rm.price * qty
+      }
+      setCalculatedSubCost(cost)
+    } else if (subName && !selectedRmId) {
+      const unitPrice = parseFloat(subUnit) || 0
+      setCalculatedSubCost(qty * unitPrice)
+    }
+  }, [selectedRmId, subQty, subUnit, rawMaterials, subName])
 
   function loadBreakdownIntoForm(b: any) {
     setSelectedId(b.id)
@@ -177,6 +236,28 @@ export default function AiBreakdownPage() {
     const updated = fixedCosts.filter(fc => fc.id !== id)
     setFixedCosts(updated)
     if (orgId) localStorage.setItem(`deuacordo_fc_${orgId}`, JSON.stringify(updated))
+  }
+
+  // 📦 GESTÃO DE MATÉRIAS-PRIMAS CADASTRADAS
+  function handleAddRawMaterial() {
+    if (!newRmName.trim() || !newRmPrice) return
+    const newRm: RawMaterial = {
+      id: Date.now().toString(),
+      name: newRmName.trim(),
+      price: parseFloat(newRmPrice) || 0,
+      unit: newRmUnit
+    }
+    const updated = [...rawMaterials, newRm]
+    setRawMaterials(updated)
+    if (orgId) localStorage.setItem(`deuacordo_rm_${orgId}`, JSON.stringify(updated))
+    setNewRmName('')
+    setNewRmPrice('')
+  }
+
+  function handleRemoveRawMaterial(id: string) {
+    const updated = rawMaterials.filter(rm => rm.id !== id)
+    setRawMaterials(updated)
+    if (orgId) localStorage.setItem(`deuacordo_rm_${orgId}`, JSON.stringify(updated))
   }
 
   // 🧮 CÁLCULO DE DILUIÇÃO PONDERADA PELO FATURAMENTO
@@ -237,15 +318,13 @@ export default function AiBreakdownPage() {
   function handleAddSubItem(blockId: string) {
     if (!subName.trim()) return
     const qty = parseFloat(subQty) || 1
-    const unitCost = parseFloat(subUnitCost) || 0
-    const totalCost = qty * unitCost
 
     const newSub: SubItem = {
       id: Date.now().toString(),
-      name: subName.trim(),
+      name: `${subName.trim()} (${qty} ${subUnit})`,
       quantity: qty,
-      unitCost: unitCost,
-      totalCost,
+      unitCost: calculatedSubCost / qty,
+      totalCost: calculatedSubCost,
     }
 
     setBlocks(prev =>
@@ -259,9 +338,11 @@ export default function AiBreakdownPage() {
       })
     )
 
+    // Reset formulário do subitem
+    setSelectedRmId('')
     setSubName('')
     setSubQty('1')
-    setSubUnitCost('')
+    setCalculatedSubCost(0)
     setActiveBlockForSub(null)
   }
 
@@ -475,14 +556,14 @@ export default function AiBreakdownPage() {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
               <span style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#047857', fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, border: '1px solid #A7F3D0' }}>
-                INTELIGÊNCIA DE ENGENHARIA FINANCEIRA
+                ENGINE B2B DE PRECIFICAÇÃO E DILUIÇÃO
               </span>
             </div>
             <h1 style={{ fontSize: 26, fontWeight: 800, color: DARK_BG, margin: 0, letterSpacing: '-0.03em' }}>
-              DeuAcordo Breakdown — Gestão & Rateio Ponderado
+              DeuAcordo Breakdown — Gestão de Insumos & Custos Fixos
             </h1>
             <p style={{ fontSize: 13, color: MUTED, margin: '4px 0 0' }}>
-              Engine B2B para estruturação de custos fixos diluídos por faturamento projetado e simulação em tempo real.
+              Cadastre suas matérias-primas e custos fixos para simular breakdowns com cálculo automático de unidades e markup real.
             </p>
           </div>
 
@@ -495,26 +576,86 @@ export default function AiBreakdownPage() {
           </button>
         </div>
 
-        {/* 🏢 ÁREA 1: HEADER HERÓI DE CUSTOS FIXOS (DARK APPLE GLASS) */}
+        {/* 📦 ÁREA 1: BANCO DE MATÉRIAS-PRIMAS CADASTRADAS */}
+        <div style={{ 
+          background: WHITE, 
+          border: `1px solid ${BORDER}`, 
+          borderRadius: 16, 
+          padding: '1.5rem 2rem', 
+          marginBottom: '1.75rem', 
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+            <div>
+              <h3 style={{ fontSize: 13, fontWeight: 800, color: DARK_BG, margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                1. Estoque de Matérias-Primas & Insumos Pré-Cadastrados
+              </h3>
+              <p style={{ fontSize: 12, color: MUTED, margin: '2px 0 0' }}>
+                Cadastre aqui seus insumos base (Preço/Unidade) para selecioná-los via lista suspensa durante o breakdown.
+              </p>
+            </div>
+            <span style={{ background: SLATE, color: DARK_BG, border: `1px solid ${BORDER}`, padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>
+              {rawMaterials.length} Insumos Cadastrados
+            </span>
+          </div>
+
+          {/* Form para Adicionar Insumo */}
+          <div style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '12px 16px', borderRadius: 12, marginBottom: '1.25rem', display: 'flex', gap: 10, alignItems: 'center' }}>
+            <input
+              type="text" placeholder="Nome do Insumo (ex: Hambúrguer, Aço, Malha...)" value={newRmName} onChange={e => setNewRmName(e.target.value)}
+              style={{ flex: 1.5, padding: '9px 12px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12.5, color: DARK_BG, outline: 'none' }}
+            />
+            <input
+              type="number" step="0.01" placeholder="Custo (R$)" value={newRmPrice} onChange={e => setNewRmPrice(e.target.value)}
+              style={{ width: 110, padding: '9px 12px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12.5, color: DARK_BG, outline: 'none' }}
+            />
+            <select
+              value={newRmUnit} onChange={e => setNewRmUnit(e.target.value)}
+              style={{ width: 150, padding: '9px 12px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12.5, color: DARK_BG }}
+            >
+              {UNIDADES_MEDIDA.map(u => (
+                <option key={u.code} value={u.code}>{u.label}</option>
+              ))}
+            </select>
+            <button
+              type="button" onClick={handleAddRawMaterial}
+              style={{ padding: '9px 18px', background: E, color: WHITE, border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}
+            >
+              + Salvar Insumo
+            </button>
+          </div>
+
+          {/* Lista em Grid de Insumos Cadastrados */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+            {rawMaterials.map(rm => (
+              <div key={rm.id} style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '8px 12px', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: DARK_BG }}>{rm.name}</span>
+                  <span style={{ fontSize: 11, color: MUTED }}>{brl(rm.price)} / {rm.unit}</span>
+                </div>
+                <button type="button" onClick={() => handleRemoveRawMaterial(rm.id)} style={{ background: 'none', border: 'none', color: RED, cursor: 'pointer', fontSize: 12 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 🏢 ÁREA 2: CUSTOS FIXOS (DARK APPLE GLASS) */}
         <div style={{ 
           background: `linear-gradient(135deg, ${DARK_BG} 0%, ${DARK_CARD} 100%)`, 
           borderRadius: 16, 
           padding: '1.5rem 2rem', 
-          marginBottom: '2rem', 
-          boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)',
+          marginBottom: '1.75rem', 
+          boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
           position: 'relative',
           overflow: 'hidden'
         }}>
-          {/* Luz sutil de fundo */}
-          <div style={{ position: 'absolute', top: -50, right: -50, width: 200, height: 200, background: 'rgba(16, 185, 129, 0.15)', borderRadius: '50%', filter: 'blur(50px)', pointerEvents: 'none' }} />
-
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', position: 'relative', zIndex: 1 }}>
             <div>
               <h3 style={{ fontSize: 13, fontWeight: 800, color: WHITE, margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                1. Custos Fixos Mensais da Empresa (Rateio Global)
+                2. Custos Fixos Mensais da Empresa (Rateio Ponderado)
               </h3>
               <p style={{ fontSize: 12, color: '#94A3B8', margin: '2px 0 0' }}>
-                Estes custos são automaticamente diluídos entre todos os seus produtos cadastrados proporcionalmente ao faturamento de cada um.
+                Estes custos são diluídos entre todos os seus produtos proporcionalmente ao faturamento projetado de cada um.
               </p>
             </div>
             <div style={{ background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.15)', color: WHITE, padding: '6px 14px', borderRadius: 30, fontSize: 12, fontWeight: 700 }}>
@@ -523,50 +664,47 @@ export default function AiBreakdownPage() {
           </div>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '2rem', position: 'relative', zIndex: 1 }}>
-            {/* Lista de Custos */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 120, overflowY: 'auto', paddingRight: 6 }}>
-              {fixedCosts.length === 0 && <span style={{ fontSize: 12, color: MUTED }}>Nenhum custo fixo cadastrado.</span>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 110, overflowY: 'auto', paddingRight: 6 }}>
               {fixedCosts.map(fc => (
-                <div key={fc.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.06)', padding: '8px 14px', borderRadius: 8 }}>
+                <div key={fc.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.06)', padding: '7px 12px', borderRadius: 8 }}>
                   <span style={{ fontSize: 12.5, color: WHITE, fontWeight: 600 }}>{fc.name}</span>
                   <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                     <span style={{ fontSize: 13, color: E, fontWeight: 700 }}>{brl(fc.value)}</span>
-                    <button type="button" onClick={() => handleRemoveFixedCost(fc.id)} style={{ background: 'none', border: 'none', color: RED, cursor: 'pointer', fontSize: 12, opacity: 0.8 }}>✕</button>
+                    <button type="button" onClick={() => handleRemoveFixedCost(fc.id)} style={{ background: 'none', border: 'none', color: RED, cursor: 'pointer', fontSize: 12 }}>✕</button>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Adicionar Novo Custo Fixo */}
-            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: 12, border: '1px dashed rgba(255,255,255,0.15)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <span style={{ display: 'block', fontSize: 10, fontWeight: 800, color: MUTED, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>+ Cadastrar Novo Custo Fixo</span>
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '10px 14px', borderRadius: 12, border: '1px dashed rgba(255,255,255,0.15)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <span style={{ display: 'block', fontSize: 10, fontWeight: 800, color: MUTED, marginBottom: 6, textTransform: 'uppercase' }}>+ Cadastrar Custo Fixo</span>
               <div style={{ display: 'flex', gap: 8 }}>
                 <input
-                  type="text" placeholder="Ex: Aluguel / Software" value={newFcName} onChange={e => setNewFcName(e.target.value)}
-                  style={{ flex: 1, padding: '8px 12px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: WHITE, fontSize: 12, outline: 'none' }}
+                  type="text" placeholder="Ex: Aluguel" value={newFcName} onChange={e => setNewFcName(e.target.value)}
+                  style={{ flex: 1, padding: '7px 10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: WHITE, fontSize: 12, outline: 'none' }}
                 />
                 <input
                   type="number" step="0.01" placeholder="R$ 0,00" value={newFcValue} onChange={e => setNewFcValue(e.target.value)}
-                  style={{ width: 110, padding: '8px 12px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: WHITE, fontSize: 12, outline: 'none' }}
+                  style={{ width: 100, padding: '7px 10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: WHITE, fontSize: 12, outline: 'none' }}
                 />
-                <button type="button" onClick={handleAddFixedCost} style={{ background: E, color: DARK_BG, border: 'none', padding: '0 14px', borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>+ Add</button>
+                <button type="button" onClick={handleAddFixedCost} style={{ background: E, color: DARK_BG, border: 'none', padding: '0 12px', borderRadius: 6, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>+ Add</button>
               </div>
             </div>
           </div>
         </div>
 
-        {/* ÁREA 2: FORMULÁRIO PRINCIPAL E CÁLCULOS */}
+        {/* ÁREA 3: FORMULÁRIO PRINCIPAL E CÁLCULOS */}
         <form onSubmit={handleSave}>
           <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 16, padding: '1.5rem 2rem', marginBottom: '1.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
             <h3 style={{ fontSize: 13, fontWeight: 800, color: DARK_BG, margin: '0 0 1.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              2. Ficha de Precificação do Produto
+              3. Ficha de Precificação do Produto
             </h3>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr', gap: '1.25rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: DARK_BG, marginBottom: 6 }}>NOME DO PRODUTO *</label>
                 <input
-                  type="text" required placeholder="Ex: Hambúrguer Artesanal / SaaS B2B"
+                  type="text" required placeholder="Ex: X-Salada Especial / Produto B2B"
                   value={productName} onChange={e => setProductName(e.target.value)}
                   style={{ width: '100%', padding: '11px 14px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 10, fontSize: 13, color: DARK_BG, fontWeight: 600, outline: 'none' }}
                 />
@@ -603,14 +741,14 @@ export default function AiBreakdownPage() {
             <div style={{ marginTop: '1.25rem', padding: '10px 14px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 11.5, color: MUTED, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 14 }}>💡</span>
               <span>
-                <strong>Inteligência de Rateio:</strong> Com faturamento projetado de <strong>{brl(liveProjRev)}</strong>, este produto representa <strong>{(currentProductWeight * 100).toFixed(1)}%</strong> da receita da sua biblioteca e absorve <strong>{brl(dilutedFixedCostPerUnit)}/unidade</strong> dos custos fixos.
+                <strong>Inteligência de Rateio:</strong> Com faturamento projetado de <strong>{brl(liveProjRev)}</strong>, este produto absorve <strong>{brl(dilutedFixedCostPerUnit)}/unidade</strong> dos custos fixos mensais da empresa.
               </span>
             </div>
           </div>
 
           <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 16, padding: '1.5rem 2rem', marginBottom: '1.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
             <h3 style={{ fontSize: 13, fontWeight: 800, color: DARK_BG, margin: '0 0 1.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              3. Construtor de Cost Breakdown (Custos Variáveis)
+              4. Construtor de Cost Breakdown (Custos Variáveis)
             </h3>
             
             <div style={{ background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', gap: 14, alignItems: 'flex-end' }}>
@@ -646,7 +784,7 @@ export default function AiBreakdownPage() {
                   type="button"
                   onClick={() => handleAddBlock(customCategory)}
                   disabled={!customCategory.trim()}
-                  style={{ padding: '10px 18px', background: customCategory.trim() ? DARK_BG : BORDER, color: WHITE, border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}
+                  style={{ padding: '10px 18px', background: customCategory.trim() ? DARK_BG : BORDER, color: WHITE, border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
                 >
                   + Adicionar
                 </button>
@@ -694,12 +832,12 @@ export default function AiBreakdownPage() {
                         </div>
                       </div>
 
-                      {/* Subitens */}
+                      {/* Lista de Subitens Adicionados */}
                       {b.subItems && b.subItems.length > 0 && (
                         <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
                           {b.subItems.map(sub => (
                             <div key={sub.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: SLATE, padding: '7px 12px', borderRadius: 6, fontSize: 11.5 }}>
-                              <span><strong>{sub.name}</strong> ({sub.quantity} un × {brl(sub.unitCost)})</span>
+                              <span><strong>{sub.name}</strong></span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <span style={{ fontWeight: 800, color: DARK_BG }}>{brl(sub.totalCost)}</span>
                                 <button type="button" onClick={() => handleRemoveSubItem(b.id, sub.id)} style={{ color: RED, border: 'none', background: 'none', cursor: 'pointer', fontWeight: 700 }}>✕</button>
@@ -709,18 +847,51 @@ export default function AiBreakdownPage() {
                         </div>
                       )}
 
-                      {/* Form Subitem Inline */}
+                      {/* FORMULÁRIO DE SUBITEM COM SELEÇÃO DE INSUMO DA LISTA SUSPENSA */}
                       {activeBlockForSub === b.id && (
-                        <div style={{ background: E_LIGHT, border: `1px solid ${E_BORDER}`, borderRadius: 8, padding: '10px', marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          <span style={{ fontSize: 10, fontWeight: 800, color: '#065F46', textTransform: 'uppercase' }}>Cadastrar Subitem Inline</span>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 80px 90px', gap: 6 }}>
-                            <input type="text" placeholder="Nome (ex: Queijo)" value={subName} onChange={e => setSubName(e.target.value)} style={{ padding: '6px 8px', fontSize: 11, border: `1px solid ${BORDER}`, borderRadius: 6 }} />
-                            <input type="number" step="0.001" placeholder="Qtd" value={subQty} onChange={e => setSubQty(e.target.value)} style={{ padding: '6px 8px', fontSize: 11, border: `1px solid ${BORDER}`, borderRadius: 6 }} />
-                            <input type="number" step="0.01" placeholder="R$/un" value={subUnitCost} onChange={e => setSubUnitCost(e.target.value)} style={{ padding: '6px 8px', fontSize: 11, border: `1px solid ${BORDER}`, borderRadius: 6 }} />
+                        <div style={{ background: E_LIGHT, border: `1px solid ${E_BORDER}`, borderRadius: 8, padding: '12px', marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <span style={{ fontSize: 10, fontWeight: 800, color: '#065F46', textTransform: 'uppercase' }}>Selecionar Insumo Pré-Cadastrado</span>
+                          
+                          <select
+                            value={selectedRmId}
+                            onChange={e => setSelectedRmId(e.target.value)}
+                            style={{ padding: '8px', fontSize: 12, border: `1px solid ${BORDER}`, borderRadius: 6, background: WHITE, color: DARK_BG, fontWeight: 600 }}
+                          >
+                            <option value="">-- Escolha da lista de matérias-primas --</option>
+                            {rawMaterials.map(rm => (
+                              <option key={rm.id} value={rm.id}>{rm.name} ({brl(rm.price)}/{rm.unit})</option>
+                            ))}
+                          </select>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px', gap: 8, alignItems: 'center' }}>
+                            <input
+                              type="text" placeholder="Ou digite o nome do insumo livre" value={subName} onChange={e => { setSubName(e.target.value); setSelectedRmId('') }}
+                              style={{ padding: '7px', fontSize: 11.5, border: `1px solid ${BORDER}`, borderRadius: 6, background: WHITE }}
+                            />
+                            <input
+                              type="number" step="0.001" placeholder="Qtd" value={subQty} onChange={e => setSubQty(e.target.value)}
+                              style={{ padding: '7px', fontSize: 11.5, border: `1px solid ${BORDER}`, borderRadius: 6, background: WHITE }}
+                            />
+                            <select
+                              value={subUnit} onChange={e => setSubUnit(e.target.value)}
+                              style={{ padding: '7px', fontSize: 11.5, border: `1px solid ${BORDER}`, borderRadius: 6, background: WHITE }}
+                            >
+                              <option value="g">grama (g)</option>
+                              <option value="kg">quilo (kg)</option>
+                              <option value="un">unidade (un)</option>
+                              <option value="ml">mililitro (ml)</option>
+                              <option value="L">litro (L)</option>
+                            </select>
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-                            <button type="button" onClick={() => setActiveBlockForSub(null)} style={{ padding: '4px 10px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: 10, cursor: 'pointer' }}>Cancelar</button>
-                            <button type="button" onClick={() => handleAddSubItem(b.id)} style={{ padding: '4px 12px', background: E, color: WHITE, border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>Salvar</button>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                            <span style={{ fontSize: 11.5, fontWeight: 700, color: '#065F46' }}>
+                              Custo Calculado: <strong style={{ fontSize: 13, color: DARK_BG }}>{brl(calculatedSubCost)}</strong>
+                            </span>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button type="button" onClick={() => setActiveBlockForSub(null)} style={{ padding: '4px 10px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: 10, cursor: 'pointer' }}>Cancelar</button>
+                              <button type="button" onClick={() => handleAddSubItem(b.id)} style={{ padding: '4px 12px', background: E, color: WHITE, border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>Adicionar no Bloco</button>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -740,7 +911,7 @@ export default function AiBreakdownPage() {
                   <div style={{ background: WHITE, padding: '14px', borderRadius: 10, border: '1.5px dashed #CBD5E1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <span style={{ fontSize: 12, fontWeight: 800, color: DARK_BG }}>🏢 Custo Fixo Diluído / un</span>
-                      <p style={{ fontSize: 10, color: MUTED, margin: '2px 0 0' }}>Alocado total: {brl(allocatedFixedCost)}</p>
+                      <p style={{ fontSize: 10, color: MUTED, margin: '2px 0 0' }}>Alocado: {brl(allocatedFixedCost)}</p>
                     </div>
                     <span style={{ fontSize: 14, fontWeight: 800, color: DARK_BG }}>+ {brl(dilutedFixedCostPerUnit)}</span>
                   </div>
@@ -804,7 +975,7 @@ export default function AiBreakdownPage() {
           </div>
 
           {/* BANNER GAP DE SAVING */}
-          <div style={{ background: E_LIGHT, border: `1.5px solid ${E_BORDER}`, borderRadius: 16, padding: '1.25rem 2rem', marginBottom: '1.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.08)' }}>
+          <div style={{ background: E_LIGHT, border: `1.5px solid ${E_BORDER}`, borderRadius: 16, padding: '1.25rem 2rem', marginBottom: '1.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <p style={{ fontSize: 11, fontWeight: 800, color: '#065F46', letterSpacing: '0.07em', textTransform: 'uppercase', margin: 0 }}>
                 OPORTUNIDADE DE SAVING POTENCIAL (GAP UNITÁRIO)
@@ -832,19 +1003,19 @@ export default function AiBreakdownPage() {
 
             <button
               type="submit" disabled={salvando}
-              style={{ padding: '14px 32px', background: E, border: 'none', borderRadius: 10, color: DARK_BG, fontSize: 14, fontWeight: 800, cursor: salvando ? 'wait' : 'pointer', boxShadow: '0 4px 16px rgba(16,185,129,0.3)', transition: 'all 0.2s' }}
+              style={{ padding: '14px 32px', background: E, border: 'none', borderRadius: 10, color: DARK_BG, fontSize: 14, fontWeight: 800, cursor: salvando ? 'wait' : 'pointer', boxShadow: '0 4px 16px rgba(16,185,129,0.3)' }}
             >
               {salvando ? 'Salvando...' : 'Salvar na Biblioteca de Produtos'}
             </button>
           </div>
         </form>
 
-        {/* ÁREA 3: OUTPUT & BIBLIOTECA DE PRODUTOS */}
+        {/* ÁREA 4: OUTPUT & BIBLIOTECA DE PRODUTOS (COM BOTÃO DE EDITAR DELIBERADO) */}
         <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 16, padding: '1.75rem 2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <div>
               <h3 style={{ fontSize: 14, fontWeight: 800, color: DARK_BG, margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                4. Biblioteca de Produtos (Portfólio Consolidado)
+                5. Biblioteca de Produtos (Portfólio Consolidado)
               </h3>
               <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>
                 Faturamento Total Projetado da Empresa: <strong>{brl(totalProjRev)}</strong>
@@ -867,17 +1038,18 @@ export default function AiBreakdownPage() {
                 return (
                   <div
                     key={b.id}
-                    onClick={() => loadBreakdownIntoForm(b)}
                     style={{
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '14px 18px', borderRadius: 12, cursor: 'pointer',
+                      padding: '14px 18px', borderRadius: 12,
                       background: isSelected ? E_LIGHT : SLATE,
                       border: `1.5px solid ${isSelected ? E : BORDER}`,
                       transition: 'all 0.2s'
                     }}
                   >
                     <div>
-                      <p style={{ fontSize: 14, fontWeight: 800, color: DARK_BG, margin: '0 0 4px' }}>{b.productName} <span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}>({bVol} un/mês)</span></p>
+                      <p style={{ fontSize: 14, fontWeight: 800, color: DARK_BG, margin: '0 0 4px' }}>
+                        {b.productName} <span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}>({bVol} un/mês)</span>
+                      </p>
                       <div style={{ display: 'flex', gap: 18, fontSize: 12, color: MUTED }}>
                         <span>Preço Venda: <strong style={{ color: DARK_BG }}>{brl(b.sellingPrice)}</strong></span>
                         <span>Faturamento Proj.: <strong style={{ color: DARK_BG }}>{brl(bRev)}</strong></span>
@@ -889,9 +1061,19 @@ export default function AiBreakdownPage() {
                       <span style={{ fontSize: 11, fontWeight: 800, padding: '5px 12px', background: WHITE, borderRadius: 20, border: `1px solid ${BORDER}`, color: DARK_BG }}>
                         {b.currentMarkup ? `${b.currentMarkup.toFixed(1)}% Markup` : '—'}
                       </span>
+
+                      {/* BOTÃO DELIBERADO PARA EDITAR NO PAINEL SUPERIOR */}
                       <button
                         type="button"
-                        onClick={e => { e.stopPropagation(); handleDelete(b.id) }}
+                        onClick={() => loadBreakdownIntoForm(b)}
+                        style={{ padding: '6px 14px', background: DARK_BG, color: WHITE, border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        ✏️ Editar
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(b.id)}
                         style={{ background: 'none', border: 'none', color: RED, fontSize: 14, cursor: 'pointer', padding: '4px 8px' }}
                       >
                         🗑️
