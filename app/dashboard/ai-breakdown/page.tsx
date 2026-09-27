@@ -73,7 +73,7 @@ interface RawMaterial {
   id: string
   name: string
   price: number
-  unit: string // 'kg', 'g', 'un', 'L', etc.
+  unit: string
 }
 
 export default function AiBreakdownPage() {
@@ -102,7 +102,7 @@ export default function AiBreakdownPage() {
   const [projectedVolume, setProjectedVolume] = useState('1000')
   const [markupPercent, setMarkupPercent]     = useState('')
 
-  // Inline Subitem states (Com suporte a Matéria-Prima Pré-Cadastrada)
+  // Inline Subitem states
   const [activeBlockForSub, setActiveBlockForSub] = useState<string | null>(null)
   const [selectedRmId, setSelectedRmId]         = useState<string>('')
   const [subName, setSubName]                     = useState('')
@@ -169,7 +169,7 @@ export default function AiBreakdownPage() {
     checkUser()
   }, [router, initData])
 
-  // 🧮 EFEITO PARA CÁLCULO AUTOMÁTICO DO SUBITEM (EX: 200g de Hambúrguer a R$ 30,00/kg = R$ 6,00)
+  // Cálculo Automático do Subitem
   useEffect(() => {
     const rm = rawMaterials.find(m => m.id === selectedRmId)
     const qty = parseFloat(subQty) || 0
@@ -178,7 +178,6 @@ export default function AiBreakdownPage() {
       setSubName(rm.name)
       let cost = 0
 
-      // Regra de Conversão de Unidades (kg -> g, L -> ml)
       if (rm.unit === 'kg' && subUnit === 'g') {
         cost = (rm.price / 1000) * qty
       } else if (rm.unit === 'L' && subUnit === 'ml') {
@@ -217,7 +216,7 @@ export default function AiBreakdownPage() {
     ])
   }
 
-  // 🧮 GESTÃO DE CUSTOS FIXOS
+  // Gestão de Custos Fixos
   function handleAddFixedCost() {
     if (!newFcName.trim() || !newFcValue) return
     const newFc: FixedCost = {
@@ -238,7 +237,7 @@ export default function AiBreakdownPage() {
     if (orgId) localStorage.setItem(`deuacordo_fc_${orgId}`, JSON.stringify(updated))
   }
 
-  // 📦 GESTÃO DE MATÉRIAS-PRIMAS CADASTRADAS
+  // Gestão de Matérias-Primas
   function handleAddRawMaterial() {
     if (!newRmName.trim() || !newRmPrice) return
     const newRm: RawMaterial = {
@@ -260,7 +259,7 @@ export default function AiBreakdownPage() {
     if (orgId) localStorage.setItem(`deuacordo_rm_${orgId}`, JSON.stringify(updated))
   }
 
-  // 🧮 CÁLCULO DE DILUIÇÃO PONDERADA PELO FATURAMENTO
+  // 🧮 CÁLCULOS DO BREAKDOWN & DILUIÇÃO PONDERADA
   const totalFixedCostsGlobal = fixedCosts.reduce((acc, fc) => acc + fc.value, 0)
   
   const livePrice = parseFloat(sellingPrice) || 0
@@ -282,7 +281,6 @@ export default function AiBreakdownPage() {
   const allocatedFixedCost = totalFixedCostsGlobal * currentProductWeight
   const dilutedFixedCostPerUnit = liveVol > 0 ? allocatedFixedCost / liveVol : 0
 
-  // 🧮 CÁLCULOS DO BREAKDOWN
   const variableTotalCost = blocks.reduce((acc, b) => {
     if (b.subItems && b.subItems.length > 0) {
       return acc + b.subItems.reduce((sAcc, sub) => sAcc + (sub.totalCost || 0), 0)
@@ -338,7 +336,6 @@ export default function AiBreakdownPage() {
       })
     )
 
-    // Reset formulário do subitem
     setSelectedRmId('')
     setSubName('')
     setSubQty('1')
@@ -444,6 +441,15 @@ export default function AiBreakdownPage() {
   const curProfit = priceNum - curTotalCost
   const tarProfit = priceNum - tarTotalCost
   const gapSaving = curTotalCost - tarTotalCost
+
+  // 📊 CÁLCULOS DO DASHBOARD ANALÍTICO DINÂMICO
+  const profitMarginPercent = priceNum > 0 ? ((curProfit / priceNum) * 100) : 0
+  const pctVarCost = curTotalCost > 0 ? ((variableTotalCost / curTotalCost) * 100) : 0
+  const pctFixCost = curTotalCost > 0 ? ((dilutedFixedCostPerUnit / curTotalCost) * 100) : 0
+  
+  // Ponto de Equilíbrio (Break-Even) em Unidades = Custo Fixo Alocado Total / Margem de Contribuição Unitária (Preço - Custo Variável)
+  const unitContributionMargin = priceNum - variableTotalCost
+  const breakEvenUnits = unitContributionMargin > 0 ? Math.ceil(allocatedFixedCost / unitContributionMargin) : 0
 
   const nomeUsuario = (user?.user_metadata?.nome_completo as string | undefined)?.split(' ')[0]
     ?? user?.email?.split('@')[0]
@@ -552,18 +558,18 @@ export default function AiBreakdownPage() {
       <div style={{ marginLeft: 270, flex: 1, minHeight: '100vh', padding: '2.5rem 3rem' }}>
         
         {/* CABEÇALHO DA PÁGINA */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.75rem' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
               <span style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#047857', fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, border: '1px solid #A7F3D0' }}>
-                ENGINE B2B DE PRECIFICAÇÃO E DILUIÇÃO
+                EXECUTIVE COST ANALYTICS & BREAKDOWN
               </span>
             </div>
             <h1 style={{ fontSize: 26, fontWeight: 800, color: DARK_BG, margin: 0, letterSpacing: '-0.03em' }}>
-              DeuAcordo Breakdown — Gestão de Insumos & Custos Fixos
+              DeuAcordo Breakdown — Painel Analítico de Custos
             </h1>
             <p style={{ fontSize: 13, color: MUTED, margin: '4px 0 0' }}>
-              Cadastre suas matérias-primas e custos fixos para simular breakdowns com cálculo automático de unidades e markup real.
+              Monitore a viabilidade financeira e a estrutura de custos do seu produto em tempo real.
             </p>
           </div>
 
@@ -574,6 +580,127 @@ export default function AiBreakdownPage() {
           >
             + Novo Produto
           </button>
+        </div>
+
+        {/* 📊 DASHBOARD ANALÍTICO EM TEMPO REAL (NO TOPO) */}
+        <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 16, padding: '1.5rem 2rem', marginBottom: '1.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+            <div>
+              <h3 style={{ fontSize: 13, fontWeight: 800, color: DARK_BG, margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                📈 Dashboard Executivo de Análise Estrutural
+              </h3>
+              <p style={{ fontSize: 12, color: MUTED, margin: '2px 0 0' }}>
+                Indicadores dinâmicos calculados automaticamente com base na modelagem abaixo.
+              </p>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 700, color: E, background: E_LIGHT, border: `1px solid ${E_BORDER}`, padding: '4px 12px', borderRadius: 20 }}>
+              ⚡ Atualização Automática
+            </span>
+          </div>
+
+          {/* CARDS DE KPIS EXECUTIVOS */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+            <div style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '14px 16px', borderRadius: 12 }}>
+              <span style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>MARGEM LÍQUIDA BRUTA</span>
+              <p style={{ fontSize: 20, fontWeight: 800, color: profitMarginPercent >= 0 ? E : RED, margin: '4px 0 0' }}>
+                {profitMarginPercent.toFixed(1)}%
+              </p>
+              <span style={{ fontSize: 11, color: MUTED }}>{brl(curProfit)} / unidade</span>
+            </div>
+
+            <div style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '14px 16px', borderRadius: 12 }}>
+              <span style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>CUSTO UNITÁRIO TOTAL</span>
+              <p style={{ fontSize: 20, fontWeight: 800, color: DARK_BG, margin: '4px 0 0' }}>
+                {brl(curTotalCost)}
+              </p>
+              <span style={{ fontSize: 11, color: MUTED }}>Var: {brl(variableTotalCost)} | Fix: {brl(dilutedFixedCostPerUnit)}</span>
+            </div>
+
+            <div style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '14px 16px', borderRadius: 12 }}>
+              <span style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>PONTO DE EQUILÍBRIO (BREAK-EVEN)</span>
+              <p style={{ fontSize: 20, fontWeight: 800, color: DARK_BG, margin: '4px 0 0' }}>
+                {breakEvenUnits.toLocaleString('pt-BR')} un
+              </p>
+              <span style={{ fontSize: 11, color: MUTED }}>mínimo para cobrir custo fixo</span>
+            </div>
+
+            <div style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '14px 16px', borderRadius: 12 }}>
+              <span style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>VOLUME PROJETADO</span>
+              <p style={{ fontSize: 20, fontWeight: 800, color: DARK_BG, margin: '4px 0 0' }}>
+                {liveVol.toLocaleString('pt-BR')} un/mês
+              </p>
+              <span style={{ fontSize: 11, color: MUTED }}>Faturamento: {brl(liveProjRev)}</span>
+            </div>
+          </div>
+
+          {/* GRÁFICOS VISUAIS DINÂMICOS */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '1.5rem' }}>
+            
+            {/* GRÁFICO 1: DECOMPOSIÇÃO PROPORCIONAL (FIXO VS VARIÁVEL) */}
+            <div style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '16px', borderRadius: 12 }}>
+              <h4 style={{ fontSize: 12, fontWeight: 800, color: DARK_BG, margin: '0 0 12px', textTransform: 'uppercase' }}>
+                1. Estrutura de Custos (Variável vs Fixo Diluído)
+              </h4>
+              
+              {curTotalCost > 0 ? (
+                <div>
+                  <div style={{ height: 20, width: '100%', background: '#E2E8F0', borderRadius: 10, overflow: 'hidden', display: 'flex', marginBottom: 12 }}>
+                    <div style={{ width: `${pctVarCost}%`, background: DARK_BG, transition: 'all 0.4s ease' }} title={`Custos Variáveis: ${pctVarCost.toFixed(1)}%`} />
+                    <div style={{ width: `${pctFixCost}%`, background: E, transition: 'all 0.4s ease' }} title={`Custos Fixos Diluídos: ${pctFixCost.toFixed(1)}%`} />
+                  </div>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ width: 10, height: 10, background: DARK_BG, borderRadius: '50%' }} />
+                      <span style={{ color: MUTED, fontWeight: 600 }}>Variáveis: <strong>{pctVarCost.toFixed(1)}%</strong> ({brl(variableTotalCost)})</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ width: 10, height: 10, background: E, borderRadius: '50%' }} />
+                      <span style={{ color: MUTED, fontWeight: 600 }}>Fixos Diluídos: <strong>{pctFixCost.toFixed(1)}%</strong> ({brl(dilutedFixedCostPerUnit)})</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <span style={{ fontSize: 12, color: MUTED }}>Preencha os valores para gerar a decomposição.</span>
+              )}
+            </div>
+
+            {/* GRÁFICO 2: DISTRIBUIÇÃO RELATIVA DOS BLOCOS DE CUSTO */}
+            <div style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '16px', borderRadius: 12 }}>
+              <h4 style={{ fontSize: 12, fontWeight: 800, color: DARK_BG, margin: '0 0 12px', textTransform: 'uppercase' }}>
+                2. Peso Proporcional de Cada Bloco de Custo
+              </h4>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {blocks.map(b => {
+                  const blockCost = b.subItems && b.subItems.length > 0
+                    ? b.subItems.reduce((acc, s) => acc + s.totalCost, 0)
+                    : (b.currentCost || 0)
+                  const blockPct = curTotalCost > 0 ? (blockCost / curTotalCost) * 100 : 0
+
+                  return (
+                    <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11 }}>
+                      <span style={{ width: 140, fontWeight: 700, color: DARK_BG, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.name}</span>
+                      <div style={{ flex: 1, height: 12, background: '#E2E8F0', borderRadius: 6, overflow: 'hidden' }}>
+                        <div style={{ width: `${blockPct}%`, height: '100%', background: E, borderRadius: 6, transition: 'all 0.4s ease' }} />
+                      </div>
+                      <span style={{ width: 90, textAlign: 'right', fontWeight: 700, color: DARK_BG }}>{brl(blockCost)} ({blockPct.toFixed(1)}%)</span>
+                    </div>
+                  )
+                })}
+
+                {/* Linha do Custo Fixo Diluído no Gráfico */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11, borderTop: `1px border ${BORDER}`, paddingTop: 4 }}>
+                  <span style={{ width: 140, fontWeight: 800, color: DARK_BG, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>🏢 Custo Fixo Diluído</span>
+                  <div style={{ flex: 1, height: 12, background: '#E2E8F0', borderRadius: 6, overflow: 'hidden' }}>
+                    <div style={{ width: `${pctFixCost}%`, height: '100%', background: DARK_BG, borderRadius: 6, transition: 'all 0.4s ease' }} />
+                  </div>
+                  <span style={{ width: 90, textAlign: 'right', fontWeight: 800, color: DARK_BG }}>{brl(dilutedFixedCostPerUnit)} ({pctFixCost.toFixed(1)}%)</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
         </div>
 
         {/* 📦 ÁREA 1: BANCO DE MATÉRIAS-PRIMAS CADASTRADAS */}
@@ -599,7 +726,6 @@ export default function AiBreakdownPage() {
             </span>
           </div>
 
-          {/* Form para Adicionar Insumo */}
           <div style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '12px 16px', borderRadius: 12, marginBottom: '1.25rem', display: 'flex', gap: 10, alignItems: 'center' }}>
             <input
               type="text" placeholder="Nome do Insumo (ex: Hambúrguer, Aço, Malha...)" value={newRmName} onChange={e => setNewRmName(e.target.value)}
@@ -625,7 +751,6 @@ export default function AiBreakdownPage() {
             </button>
           </div>
 
-          {/* Lista em Grid de Insumos Cadastrados */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
             {rawMaterials.map(rm => (
               <div key={rm.id} style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '8px 12px', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1010,7 +1135,7 @@ export default function AiBreakdownPage() {
           </div>
         </form>
 
-        {/* ÁREA 4: OUTPUT & BIBLIOTECA DE PRODUTOS (COM BOTÃO DE EDITAR DELIBERADO) */}
+        {/* ÁREA 4: OUTPUT & BIBLIOTECA DE PRODUTOS */}
         <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 16, padding: '1.75rem 2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <div>
@@ -1062,7 +1187,6 @@ export default function AiBreakdownPage() {
                         {b.currentMarkup ? `${b.currentMarkup.toFixed(1)}% Markup` : '—'}
                       </span>
 
-                      {/* BOTÃO DELIBERADO PARA EDITAR NO PAINEL SUPERIOR */}
                       <button
                         type="button"
                         onClick={() => loadBreakdownIntoForm(b)}
