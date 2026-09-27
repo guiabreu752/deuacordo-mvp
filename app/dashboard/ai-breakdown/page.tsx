@@ -96,7 +96,7 @@ export default function AiBreakdownPage() {
   const [newRmPrice, setNewRmPrice]     = useState('')
   const [newRmUnit]                     = useState('kg')
 
-  // 3. Ficha de Produto & Tributação
+  // 3. Ficha de Produto & Tributação (Edição Ativa)
   const [productName, setProductName]         = useState('')
   const [sellingPrice, setSellingPrice]       = useState('')
   const [projectedVolume, setProjectedVolume] = useState('100')
@@ -182,13 +182,14 @@ export default function AiBreakdownPage() {
     setCalculatedSubCost(baseCost * (1 + scrapPct / 100))
   }, [selectedRmId, subQty, subUnit, subScrapRate, rawMaterials, subName])
 
+  // CORREÇÃO DEFINTIVA: Carregamento do volume gravado da ficha técnica
   function loadBreakdownIntoForm(b: any) {
     setSelectedId(b.id)
     setProductName(b.productName || '')
     setSellingPrice(b.sellingPrice !== undefined && b.sellingPrice !== null ? String(b.sellingPrice) : '')
     
-    const vol = b.projectedVolume !== undefined && b.projectedVolume !== null ? String(b.projectedVolume) : '100'
-    setProjectedVolume(vol)
+    const parsedVol = b.projectedVolume !== undefined && b.projectedVolume !== null ? String(b.projectedVolume) : '100'
+    setProjectedVolume(parsedVol)
     
     setMarkupPercent(b.currentMarkup ? b.currentMarkup.toFixed(1) : '')
     if (Array.isArray(b.blocks)) setBlocks(b.blocks)
@@ -227,7 +228,7 @@ export default function AiBreakdownPage() {
 
   function handleRemoveRawMaterial(id: string) { persistRM(rawMaterials.filter(rm => rm.id !== id)) }
 
-  // 🧮 CÁLCULOS FINANCEIROS
+  // 🧮 CÁLCULOS FINANCEIROS DO PRODUTO ATIVO NO FORMULÁRIO
   const totalFixedCostsGlobal = fixedCosts.reduce((acc, fc) => acc + fc.value, 0)
   const livePrice = parseFloat(sellingPrice) || 0
   const liveVol   = Math.max(parseFloat(projectedVolume) || 0, 1)
@@ -259,6 +260,7 @@ export default function AiBreakdownPage() {
 
   const curTotalCost = variableTotalCost + dilutedFixedCostPerUnit + taxAmountPerUnit
 
+  // 📊 CONSOLIDAÇÃO FIXA DO PORTFÓLIO COMPLETO PARA O DASHBOARD INICIAL
   const portfolioTotalRev = breakdowns.reduce((acc, b) => {
     const p = parseFloat(b.sellingPrice) || 0
     const v = parseFloat(b.projectedVolume) || 100
@@ -267,17 +269,21 @@ export default function AiBreakdownPage() {
 
   const portfolioTotalVol = breakdowns.reduce((acc, b) => acc + (parseFloat(b.projectedVolume) || 100), 0)
 
-  // Variáveis de exibição no Dashboard (Consolidação x Produto Ativo)
-  const displayRevenue = livePrice > 0 ? liveProjRev : portfolioTotalRev
-  const displayPrice = livePrice > 0 ? livePrice : (breakdowns.length > 0 ? portfolioTotalRev / (portfolioTotalVol || 1) : 0)
-  const displayVolume = livePrice > 0 ? liveVol : portfolioTotalVol
-  const displayUnitCost = livePrice > 0 ? curTotalCost : (breakdowns.length > 0 ? (totalFixedCostsGlobal / (portfolioTotalVol || 1)) : 0)
+  // Variáveis Fixo-Consolidadas do Portfólio Geral
+  const portfolioAvgPrice = breakdowns.length > 0 ? portfolioTotalRev / (portfolioTotalVol || 1) : 0
+  const portfolioUnitCost = portfolioTotalVol > 0 ? (totalFixedCostsGlobal / portfolioTotalVol) : 0
+  const portfolioProfit = portfolioAvgPrice - portfolioUnitCost
+  const portfolioMarginPct = portfolioAvgPrice > 0 ? ((portfolioProfit / portfolioAvgPrice) * 100) : 0
+  const portfolioBreakEven = portfolioAvgPrice > 0 ? Math.ceil(totalFixedCostsGlobal / portfolioAvgPrice) : 0
 
-  const curProfit = livePrice > 0 ? (livePrice - curTotalCost) : (displayPrice - displayUnitCost)
-  const profitMarginPercent = displayPrice > 0 ? ((curProfit / displayPrice) * 100) : 0
-  
-  const unitContributionMargin = livePrice > 0 ? (livePrice - variableTotalCost - taxAmountPerUnit) : (displayPrice - (variableTotalCost || 0))
-  const breakEvenUnits = unitContributionMargin > 0 ? Math.ceil((allocatedFixedCost || totalFixedCostsGlobal) / unitContributionMargin) : 0
+  // As métricas do dashboard agora exibem consistentemente o portfólio consolidado
+  const displayRevenue = portfolioTotalRev
+  const displayPrice = portfolioAvgPrice
+  const displayVolume = portfolioTotalVol
+  const displayUnitCost = portfolioUnitCost
+  const displayProfit = portfolioProfit
+  const displayMarginPct = portfolioMarginPct
+  const displayBreakEven = portfolioBreakEven
 
   const handleSellingPriceChange = (val: string) => {
     setSellingPrice(val)
@@ -340,6 +346,7 @@ export default function AiBreakdownPage() {
 
   function handleRemoveBlock(id: string) { setBlocks(prev => prev.filter(b => b.id !== id)) }
 
+  // CORREÇÃO CRÍTICA DO SALVAMENTO: Envia o volume dinâmico digitado para o Supabase
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     const activeOrgId = orgId || user?.id
@@ -347,12 +354,14 @@ export default function AiBreakdownPage() {
     const price = parseFloat(sellingPrice) || 0
     if (!productName.trim() || price <= 0) return alert('Informe o nome do produto e um preço de venda válido.')
 
+    const volToSave = parseFloat(projectedVolume) || 100
+
     setSalvando(true)
     const res = await saveCostBreakdown({
       id: selectedId || undefined,
       productName: productName.trim(),
       sellingPrice: price,
-      projectedVolume: parseFloat(projectedVolume) || 100,
+      projectedVolume: volToSave,
       blocks,
       organizationId: activeOrgId,
     } as any)
@@ -364,7 +373,7 @@ export default function AiBreakdownPage() {
         setBreakdowns(updated.data)
         loadBreakdownIntoForm(res.data)
       }
-      alert('Breakdown salvo com sucesso!')
+      alert('Breakdown e volume gravados com sucesso!')
     } else alert(res.error || 'Erro ao salvar breakdown.')
   }
 
@@ -486,46 +495,46 @@ export default function AiBreakdownPage() {
             </div>
           </header>
 
-          {/* DASHBOARD DE KPIs */}
+          {/* DASHBOARD DE KPIs CONSOLIDADO DO PORTFÓLIO */}
           <section className="card" style={{ marginBottom: '32px' }}>
             <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ fontSize: 15, margin: 0, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: TOKENS.primary }}>⚡</span> Painel de Viabilidade & Margem Real
+                <span style={{ color: TOKENS.primary }}>⚡</span> Painel de Viabilidade & Margem Real (Consolidado)
               </h2>
-              <span style={{ fontSize: 12, color: TOKENS.textMuted }}>{selectedId ? 'Exibindo Produto Selecionado' : 'Consolidado do Portfólio'}</span>
+              <span style={{ fontSize: 12, color: TOKENS.textMuted }}>Portfólio Completo ({breakdowns.length} Produtos)</span>
             </div>
             <div className="card-body">
               <div className="kpi-grid">
                 <div className="kpi-card">
-                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Faturamento Proj.</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Faturamento Proj. Total</span>
                   <p className="font-mono" style={{ fontSize: 24, fontWeight: 800, color: TOKENS.textMain, margin: '8px 0 4px' }}>{brl(displayRevenue)}</p>
-                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>{displayVolume.toLocaleString('pt-BR')} un/mês</span>
+                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>{displayVolume.toLocaleString('pt-BR')} un/mês no portfólio</span>
                 </div>
                 
                 <div className="kpi-card">
-                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Ticket Médio (Preço)</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Ticket Médio Geral</span>
                   <p className="font-mono" style={{ fontSize: 24, fontWeight: 800, color: TOKENS.textMain, margin: '8px 0 4px' }}>{brl(displayPrice)}</p>
-                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>Preço de Venda Unitário</span>
+                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>Preço Médio Ponderado</span>
                 </div>
 
-                <div className={`kpi-card ${profitMarginPercent >= 0 ? 'positive' : 'negative'}`}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Margem Líquida Real</span>
+                <div className={`kpi-card ${displayMarginPct >= 0 ? 'positive' : 'negative'}`}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Margem Médi do Portfólio</span>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '8px 0 4px' }}>
-                    <p className="font-mono" style={{ fontSize: 24, fontWeight: 800, color: profitMarginPercent >= 0 ? TOKENS.primary : TOKENS.danger, margin: 0 }}>{pct(profitMarginPercent)}</p>
+                    <p className="font-mono" style={{ fontSize: 24, fontWeight: 800, color: displayMarginPct >= 0 ? TOKENS.primary : TOKENS.danger, margin: 0 }}>{pct(displayMarginPct)}</p>
                   </div>
-                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>{brl(curProfit)} / unidade</span>
+                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>{brl(displayProfit)} / unidade</span>
                 </div>
 
                 <div className="kpi-card">
-                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Custo Unit. Total</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Custo Médio Unitário</span>
                   <p className="font-mono" style={{ fontSize: 24, fontWeight: 800, color: TOKENS.textMain, margin: '8px 0 4px' }}>{brl(displayUnitCost)}</p>
-                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>Var: {brl(variableTotalCost)} | Fix: {brl(dilutedFixedCostPerUnit)}</span>
+                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>Com Absorção Fixo</span>
                 </div>
 
                 <div className="kpi-card">
-                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Break-Even Point</span>
-                  <p className="font-mono" style={{ fontSize: 24, fontWeight: 800, color: TOKENS.textMain, margin: '8px 0 4px' }}>{breakEvenUnits.toLocaleString('pt-BR')} un</p>
-                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>Qtd mín. p/ cobrir fixo</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Break-Even Global</span>
+                  <p className="font-mono" style={{ fontSize: 24, fontWeight: 800, color: TOKENS.textMain, margin: '8px 0 4px' }}>{displayBreakEven.toLocaleString('pt-BR')} un</p>
+                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>Volume para Cobrir OPEX Fixo</span>
                 </div>
               </div>
             </div>
