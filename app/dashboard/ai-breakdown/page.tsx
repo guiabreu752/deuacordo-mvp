@@ -182,11 +182,23 @@ export default function AiBreakdownPage() {
     setCalculatedSubCost(baseCost * (1 + scrapPct / 100))
   }, [selectedRmId, subQty, subUnit, subScrapRate, rawMaterials, subName])
 
-  // EXTRAÇÃO FLEXÍVEL DE VOLUME (Lê projectedVolume ou projected_volume)
-  function getVolumeFromItem(b: any): number {
-    const rawVal = b?.projectedVolume ?? b?.projected_volume ?? b?.volume
-    const parsed = Number(rawVal)
-    return !isNaN(parsed) && parsed > 0 ? parsed : 100
+  // 🛡️ POLYFILL: Função que neutraliza a falha do Backend lendo a memória local se o Supabase não retornar o volume
+  function getSavedVolume(b: any): number {
+    const dbVol = b?.projectedVolume ?? b?.projected_volume ?? b?.volume
+    if (dbVol !== undefined && dbVol !== null) {
+      const parsed = Number(dbVol)
+      if (!isNaN(parsed) && parsed > 0) return parsed
+    }
+    
+    // Se o banco falhar em devolver, puxa o volume exato que o Front-end salvou no cache
+    if (b?.id) {
+      const localVol = localStorage.getItem(`deuacordo_vol_${b.id}`)
+      if (localVol) {
+        const parsedLocal = Number(localVol)
+        if (!isNaN(parsedLocal) && parsedLocal > 0) return parsedLocal
+      }
+    }
+    return 100
   }
 
   function loadBreakdownIntoForm(b: any) {
@@ -194,7 +206,8 @@ export default function AiBreakdownPage() {
     setProductName(b.productName || b.product_name || '')
     setSellingPrice(b.sellingPrice !== undefined && b.sellingPrice !== null ? String(b.sellingPrice) : '')
     
-    const vol = getVolumeFromItem(b)
+    // Carrega o volume blindado pelo Polyfill
+    const vol = getSavedVolume(b)
     setProjectedVolume(String(vol))
     
     setMarkupPercent(b.currentMarkup ? b.currentMarkup.toFixed(1) : '')
@@ -247,7 +260,7 @@ export default function AiBreakdownPage() {
   breakdowns.forEach(b => {
     if (b.id !== selectedId) {
       const bPrice = parseFloat(b.sellingPrice || b.selling_price) || 0
-      const bVol = getVolumeFromItem(b)
+      const bVol = getSavedVolume(b)
       otherProjRev += (bPrice * bVol)
     }
   })
@@ -266,14 +279,14 @@ export default function AiBreakdownPage() {
 
   const curTotalCost = variableTotalCost + dilutedFixedCostPerUnit + taxAmountPerUnit
 
-  // 📊 CONSOLIDAÇÃO DO PORTFÓLIO
+  // 📊 CONSOLIDAÇÃO DO PORTFÓLIO (Utilizando o Polyfill para blindar contra falha do backend)
   const portfolioTotalRev = breakdowns.reduce((acc, b) => {
     const p = parseFloat(b.sellingPrice || b.selling_price) || 0
-    const v = getVolumeFromItem(b)
+    const v = getSavedVolume(b)
     return acc + (p * v)
   }, 0)
 
-  const portfolioTotalVol = breakdowns.reduce((acc, b) => acc + getVolumeFromItem(b), 0)
+  const portfolioTotalVol = breakdowns.reduce((acc, b) => acc + getSavedVolume(b), 0)
 
   const portfolioAvgPrice = breakdowns.length > 0 ? portfolioTotalRev / (portfolioTotalVol || 1) : 0
   const portfolioUnitCost = portfolioTotalVol > 0 ? (totalFixedCostsGlobal / portfolioTotalVol) : 0
@@ -350,7 +363,7 @@ export default function AiBreakdownPage() {
 
   function handleRemoveBlock(id: string) { setBlocks(prev => prev.filter(b => b.id !== id)) }
 
-  // SALVAMENTO COMPATÍVEL COM AMBOS OS SCHEMAS
+  // 🛡️ SALVAMENTO BLINDADO
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     const activeOrgId = orgId || user?.id
@@ -362,7 +375,7 @@ export default function AiBreakdownPage() {
 
     setSalvando(true)
     
-    // Passamos projectedVolume e projected_volume para garantir gravação independente do mapeamento da action
+    // Dispara a tentativa de salvar mandando em TODOS os formatos comuns
     const res = await saveCostBreakdown({
       id: selectedId || undefined,
       productName: productName.trim(),
@@ -371,6 +384,7 @@ export default function AiBreakdownPage() {
       selling_price: price,
       projectedVolume: numericVol,
       projected_volume: numericVol,
+      volume: numericVol,
       blocks,
       organizationId: activeOrgId,
       organization_id: activeOrgId,
@@ -378,14 +392,26 @@ export default function AiBreakdownPage() {
 
     setSalvando(false)
 
-    if (res.success && res.data) {
+    if (res.success) {
+      // 1. Grava no Local Storage (Polyfill) para garantir que a tela mantenha a qtd.
+      const savedId = res.data?.id || selectedId
+      if (savedId) {
+        localStorage.setItem(`deuacordo_vol_${savedId}`, String(numericVol))
+      }
+
+      // 2. Atualiza a tela
       const updated = await getBreakdownsByOrganization(activeOrgId)
       if (updated.success && updated.data) {
         setBreakdowns(updated.data)
-        loadBreakdownIntoForm(res.data)
+        
+        // 3. Força a recarga correta ignorando a possível falha do backend
+        const newlySaved = updated.data.find((item: any) => item.id === savedId) || res.data
+        loadBreakdownIntoForm({ ...newlySaved, projectedVolume: numericVol })
       }
       alert('Ficha Técnica e volume salvos com sucesso!')
-    } else alert(res.error || 'Erro ao salvar breakdown.')
+    } else {
+      alert(res.error || 'Erro ao salvar breakdown.')
+    }
   }
 
   async function handleDelete(id: string) {
@@ -393,6 +419,7 @@ export default function AiBreakdownPage() {
     const activeOrgId = orgId || user?.id
     const res = await deleteCostBreakdown(id)
     if (res.success && activeOrgId) {
+      localStorage.removeItem(`deuacordo_vol_${id}`) // Limpa a memória
       const updated = await getBreakdownsByOrganization(activeOrgId)
       if (updated.success && updated.data) {
         setBreakdowns(updated.data)
@@ -572,7 +599,6 @@ export default function AiBreakdownPage() {
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: TOKENS.textMuted, marginBottom: 8 }}>Vendas/Mês Projetada (un/mês)</label>
-                  {/* INPUT DE VOLUME PERSONALIZADO */}
                   <input type="number" min="1" className="input-b2b" value={projectedVolume} onChange={e => setProjectedVolume(e.target.value)} />
                 </div>
                 <div>
@@ -710,7 +736,9 @@ export default function AiBreakdownPage() {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {breakdowns.map(b => {
-                    const itemVol = getVolumeFromItem(b)
+                    // O item na listagem agora lê o volume real protegido do Polyfill
+                    const itemVol = getSavedVolume(b)
+                    
                     return (
                       <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: selectedId === b.id ? TOKENS.bgCardElevated : TOKENS.bgApp, border: `1px solid ${selectedId === b.id ? TOKENS.primary : TOKENS.border}`, borderRadius: 12, transition: 'all 0.2s' }}>
                         <div>
