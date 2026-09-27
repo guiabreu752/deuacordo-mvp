@@ -743,29 +743,126 @@ export default function AiBreakdownPage() {
             </div>
           </section>
 
-          {/* PORTFÓLIO DE PRODUTOS */}
+          {/* PORTFÓLIO DE PRODUTOS COM MINI RESUMO EXECUTIVO */}
           <section className="card">
-            <div className="card-header"><h2 style={{ fontSize: 15, margin: 0, fontWeight: 700 }}>📚 Portfólio de Produtos / Fichas Gravadas</h2></div>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: 15, margin: 0, fontWeight: 700 }}>📚 Portfólio de Produtos / Fichas Gravadas</h2>
+              <span style={{ fontSize: 12, color: TOKENS.textMuted }}>
+                Faturamento Total Projeção: <strong style={{ color: TOKENS.primary }}>{brl(portfolioTotalRev)}</strong>
+              </span>
+            </div>
             <div className="card-body">
               {breakdowns.length === 0 ? (
                 <p style={{ fontSize: 13, color: TOKENS.textMuted, textAlign: 'center', margin: '40px 0' }}>Nenhum produto cadastrado no portfólio.</p>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {breakdowns.map(b => {
                     const itemVol = getSavedVolume(b)
+                    const itemPrice = parseFloat(b.sellingPrice || b.selling_price) || 0
+                    const itemRev = itemPrice * itemVol
                     
+                    // Representatividade no Faturamento (%)
+                    const shareOfRevenue = portfolioTotalRev > 0 ? (itemRev / portfolioTotalRev) * 100 : 0
+
+                    // Custos Variáveis dos Insumos
+                    const itemVarCost = Array.isArray(b.blocks) 
+                      ? b.blocks.reduce((acc: number, bl: any) => {
+                          if (bl.subItems && bl.subItems.length > 0) {
+                            return acc + bl.subItems.reduce((sAcc: number, s: any) => sAcc + (s.totalCost || 0), 0)
+                          }
+                          return acc + (bl.currentCost || 0)
+                        }, 0)
+                      : 0
+
+                    // Absorção de Custo Fixo Proporcional ao Share de Faturamento
+                    const itemAllocatedFixed = totalFixedCostsGlobal * (shareOfRevenue / 100)
+                    const itemFixedUnit = itemVol > 0 ? itemAllocatedFixed / itemVol : 0
+                    
+                    // Custo Unitário Total e Lucro
+                    const itemTotalUnitCost = itemVarCost + itemFixedUnit
+                    const itemProfit = itemPrice - itemTotalUnitCost
+                    const itemMarginPct = itemPrice > 0 ? (itemProfit / itemPrice) * 100 : 0
+                    const itemMarkup = itemTotalUnitCost > 0 ? (itemProfit / itemTotalUnitCost) * 100 : 0
+
                     return (
-                      <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: selectedId === b.id ? TOKENS.bgCardElevated : TOKENS.bgApp, border: `1px solid ${selectedId === b.id ? TOKENS.primary : TOKENS.border}`, borderRadius: 12, transition: 'all 0.2s' }}>
-                        <div>
-                          <p style={{ fontSize: 14, fontWeight: 700, margin: '0 0 6px' }}>{b.productName || b.product_name} <span style={{ fontSize: 12, color: TOKENS.primary, fontWeight: 600 }}>({itemVol} un/mês)</span></p>
-                          <div style={{ display: 'flex', gap: 16, fontSize: 12, color: TOKENS.textMuted }} className="font-mono">
-                            <span>Preço: <strong style={{ color: TOKENS.textMain }}>{brl(b.sellingPrice || b.selling_price)}</strong></span>
-                            <span>Fat. Proj: <strong style={{ color: TOKENS.primary }}>{brl((b.sellingPrice || b.selling_price || 0) * itemVol)}</strong></span>
+                      <div 
+                        key={b.id} 
+                        style={{ 
+                          padding: '16px 20px', 
+                          background: selectedId === b.id ? TOKENS.bgCardElevated : TOKENS.bgApp, 
+                          border: `1px solid ${selectedId === b.id ? TOKENS.primary : TOKENS.border}`, 
+                          borderRadius: 12, 
+                          transition: 'all 0.2s',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 12
+                        }}
+                      >
+                        {/* Linha Superior: Nome, Volume, Share do Fat. e Ações */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <p style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>
+                              {b.productName || b.product_name}
+                            </p>
+                            <span style={{ fontSize: 12, color: TOKENS.primary, fontWeight: 600, background: TOKENS.primaryLight, padding: '2px 8px', borderRadius: 12 }}>
+                              {itemVol.toLocaleString('pt-BR')} un/mês
+                            </span>
+                            <span style={{ fontSize: 12, color: TOKENS.textMuted, background: TOKENS.bgCard, padding: '2px 8px', borderRadius: 12, border: `1px solid ${TOKENS.border}` }}>
+                              Share Fat: <strong style={{ color: TOKENS.textMain }}>{pct(shareOfRevenue)}</strong>
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button onClick={() => loadBreakdownIntoForm(b)} className="btn btn-outline" style={{ padding: '6px 12px', fontSize: 12 }}>
+                              Abrir / Editar
+                            </button>
+                            <button onClick={() => handleDelete(b.id)} className="btn-danger" style={{ padding: '6px 10px', borderRadius: 8, cursor: 'pointer' }}>
+                              🗑️
+                            </button>
                           </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button onClick={() => loadBreakdownIntoForm(b)} className="btn btn-outline" style={{ padding: '6px 12px' }}>Abrir / Editar</button>
-                          <button onClick={() => handleDelete(b.id)} className="btn-danger" style={{ padding: '6px 10px', borderRadius: 8, cursor: 'pointer' }}>🗑️</button>
+
+                        {/* Linha Inferior: Mini Resumo Executivo */}
+                        <div 
+                          className="font-mono"
+                          style={{ 
+                            display: 'grid', 
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', 
+                            gap: 12, 
+                            paddingTop: 12, 
+                            borderTop: `1px solid ${TOKENS.borderLight}`,
+                            fontSize: 12
+                          }}
+                        >
+                          <div>
+                            <span style={{ color: TOKENS.textMuted, fontSize: 10, textTransform: 'uppercase', display: 'block' }}>Preço Venda</span>
+                            <strong style={{ color: TOKENS.textMain, fontSize: 13 }}>{brl(itemPrice)}</strong>
+                          </div>
+
+                          <div>
+                            <span style={{ color: TOKENS.textMuted, fontSize: 10, textTransform: 'uppercase', display: 'block' }}>Fat. Proj.</span>
+                            <strong style={{ color: TOKENS.primary, fontSize: 13 }}>{brl(itemRev)}</strong>
+                          </div>
+
+                          <div>
+                            <span style={{ color: TOKENS.textMuted, fontSize: 10, textTransform: 'uppercase', display: 'block' }}>Custo Unit.</span>
+                            <strong style={{ color: TOKENS.textMain, fontSize: 13 }}>{brl(itemTotalUnitCost)}</strong>
+                          </div>
+
+                          <div>
+                            <span style={{ color: TOKENS.textMuted, fontSize: 10, textTransform: 'uppercase', display: 'block' }}>Margem R$</span>
+                            <strong style={{ color: itemProfit >= 0 ? TOKENS.primary : TOKENS.danger, fontSize: 13 }}>{brl(itemProfit)}</strong>
+                          </div>
+
+                          <div>
+                            <span style={{ color: TOKENS.textMuted, fontSize: 10, textTransform: 'uppercase', display: 'block' }}>Margem %</span>
+                            <strong style={{ color: itemMarginPct >= 0 ? TOKENS.primary : TOKENS.danger, fontSize: 13 }}>{pct(itemMarginPct)}</strong>
+                          </div>
+
+                          <div>
+                            <span style={{ color: TOKENS.textMuted, fontSize: 10, textTransform: 'uppercase', display: 'block' }}>Markup %</span>
+                            <strong style={{ color: TOKENS.primary, fontSize: 13 }}>{pct(itemMarkup)}</strong>
+                          </div>
                         </div>
                       </div>
                     )
