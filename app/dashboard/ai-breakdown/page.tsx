@@ -99,7 +99,13 @@ export default function AiBreakdownPage() {
   const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([])
   const [newRmName, setNewRmName]       = useState('')
   const [newRmPrice, setNewRmPrice]     = useState('')
-  const [newRmUnit]                     = useState('kg')
+  const [newRmUnit, setNewRmUnit]       = useState('kg')
+
+  // Edição inline de Insumo
+  const [editingRmId, setEditingRmId]       = useState<string | null>(null)
+  const [editingRmName, setEditingRmName]   = useState('')
+  const [editingRmPrice, setEditingRmPrice] = useState('')
+  const [editingRmUnit, setEditingRmUnit]   = useState('kg')
 
   // 3. Ficha de Produto & Tributação (Edição Ativa)
   const [productName, setProductName]         = useState('')
@@ -232,6 +238,7 @@ export default function AiBreakdownPage() {
   const persistFC = (data: FixedCost[]) => { setFixedCosts(data); if (orgId) localStorage.setItem(`deuacordo_fc_${orgId}`, JSON.stringify(data)) }
   const persistRM = (data: RawMaterial[]) => { setRawMaterials(data); if (orgId) localStorage.setItem(`deuacordo_rm_${orgId}`, JSON.stringify(data)) }
 
+  // Gestão de Custos Fixos
   function handleAddFixedCost() {
     if (!newFcName.trim() || !newFcValue) return
     persistFC([...fixedCosts, { id: Date.now().toString(), name: newFcName.trim(), value: parseFloat(newFcValue) || 0 }])
@@ -250,14 +257,37 @@ export default function AiBreakdownPage() {
       fc.id === editingFcId ? { ...fc, name: editingFcName.trim(), value: parseFloat(editingFcValue) || 0 } : fc
     )
     persistFC(updated)
-    setEditingFcId(null)
-    setEditingFcName('')
-    setEditingFcValue('')
+    setEditingFcId(null); setEditingFcName(''); setEditingFcValue('')
   }
 
   function handleRemoveFixedCost(id: string) { persistFC(fixedCosts.filter(fc => fc.id !== id)) }
 
-  // 🧮 CÁLCULOS FINANCEIROS DO PRODUTO ATIVO
+  // Gestão de Banco de Insumos
+  function handleAddRawMaterial() {
+    if (!newRmName.trim() || !newRmPrice) return
+    persistRM([...rawMaterials, { id: Date.now().toString(), name: newRmName.trim(), price: parseFloat(newRmPrice) || 0, unit: newRmUnit }])
+    setNewRmName(''); setNewRmPrice('')
+  }
+
+  function handleStartEditRm(rm: RawMaterial) {
+    setEditingRmId(rm.id)
+    setEditingRmName(rm.name)
+    setEditingRmPrice(String(rm.price))
+    setEditingRmUnit(rm.unit)
+  }
+
+  function handleSaveEditRm() {
+    if (!editingRmId || !editingRmName.trim()) return
+    const updated = rawMaterials.map(rm =>
+      rm.id === editingRmId ? { ...rm, name: editingRmName.trim(), price: parseFloat(editingRmPrice) || 0, unit: editingRmUnit } : rm
+    )
+    persistRM(updated)
+    setEditingRmId(null); setEditingRmName(''); setEditingRmPrice('')
+  }
+
+  function handleRemoveRawMaterial(id: string) { persistRM(rawMaterials.filter(rm => rm.id !== id)) }
+
+  // 🧮 CÁLCULOS FINANCEIROS DO PRODUTO ATIVO NO FORM
   const totalFixedCostsGlobal = fixedCosts.reduce((acc, fc) => acc + fc.value, 0)
   const livePrice = parseFloat(sellingPrice) || 0
   const liveVol   = Math.max(parseFloat(projectedVolume) || 1, 1)
@@ -289,7 +319,7 @@ export default function AiBreakdownPage() {
 
   const curTotalCost = variableTotalCost + dilutedFixedCostPerUnit + taxAmountPerUnit
 
-  // 📊 CONSOLIDAÇÃO DO PORTFÓLIO
+  // 📊 CONSOLIDAÇÃO REAL DO PORTFÓLIO (INCLUINDO CUSTOS VARIÁVEIS DE CADA ITEM)
   const portfolioTotalRev = breakdowns.reduce((acc, b) => {
     const p = parseFloat(b.sellingPrice || b.selling_price) || 0
     const v = getSavedVolume(b)
@@ -298,17 +328,41 @@ export default function AiBreakdownPage() {
 
   const portfolioTotalVol = breakdowns.reduce((acc, b) => acc + getSavedVolume(b), 0)
 
-  const portfolioAvgPrice = breakdowns.length > 0 ? portfolioTotalRev / (portfolioTotalVol || 1) : 0
-  const portfolioUnitCost = portfolioTotalVol > 0 ? (totalFixedCostsGlobal / portfolioTotalVol) : 0
-  const portfolioProfit = portfolioAvgPrice - portfolioUnitCost
-  const portfolioMarginPct = portfolioAvgPrice > 0 ? ((portfolioProfit / portfolioAvgPrice) * 100) : 0
-  const portfolioBreakEven = portfolioAvgPrice > 0 ? Math.ceil(totalFixedCostsGlobal / portfolioAvgPrice) : 0
+  // Custo Variável Total Somado de Todos os Produtos no Portfólio
+  const portfolioTotalVarCostMonth = breakdowns.reduce((acc, b) => {
+    const v = getSavedVolume(b)
+    const itemVarUnit = Array.isArray(b.blocks) 
+      ? b.blocks.reduce((bAcc: number, bl: any) => {
+          if (bl.subItems && bl.subItems.length > 0) {
+            return bAcc + bl.subItems.reduce((sAcc: number, s: any) => sAcc + (s.totalCost || 0), 0)
+          }
+          return bAcc + (bl.currentCost || 0)
+        }, 0)
+      : 0
+    return acc + (itemVarUnit * v)
+  }, 0)
+
+  // Custo Total Mensal (Insumos/Variáveis + OPEX Fixo)
+  const portfolioTotalCostMonth = portfolioTotalVarCostMonth + totalFixedCostsGlobal
+  
+  // Custo Médio Ponderado por Unidade
+  const portfolioAvgUnitCost = portfolioTotalVol > 0 ? (portfolioTotalCostMonth / portfolioTotalVol) : 0
+  const portfolioAvgPrice = portfolioTotalVol > 0 ? (portfolioTotalRev / portfolioTotalVol) : 0
+  
+  const portfolioTotalProfitMonth = portfolioTotalRev - portfolioTotalCostMonth
+  const portfolioAvgProfitPerUnit = portfolioTotalVol > 0 ? (portfolioTotalProfitMonth / portfolioTotalVol) : 0
+  const portfolioMarginPct = portfolioTotalRev > 0 ? ((portfolioTotalProfitMonth / portfolioTotalRev) * 100) : 0
+
+  // Break-even Global (Considerando a Margem de Contribuição Média do Portfólio)
+  const portfolioAvgVarUnitCost = portfolioTotalVol > 0 ? (portfolioTotalVarCostMonth / portfolioTotalVol) : 0
+  const portfolioAvgContribMargin = portfolioAvgPrice - portfolioAvgVarUnitCost
+  const portfolioBreakEven = portfolioAvgContribMargin > 0 ? Math.ceil(totalFixedCostsGlobal / portfolioAvgContribMargin) : 0
 
   const displayRevenue = portfolioTotalRev
   const displayPrice = portfolioAvgPrice
   const displayVolume = portfolioTotalVol
-  const displayUnitCost = portfolioUnitCost
-  const displayProfit = portfolioProfit
+  const displayUnitCost = portfolioAvgUnitCost
+  const displayProfit = portfolioAvgProfitPerUnit
   const displayMarginPct = portfolioMarginPct
   const displayBreakEven = portfolioBreakEven
 
@@ -537,7 +591,7 @@ export default function AiBreakdownPage() {
             </div>
           </header>
 
-          {/* DASHBOARD DE KPIs CONSOLIDADO DO PORTFÓLIO */}
+          {/* DASHBOARD DE KPIs CONSOLIDADO DO PORTFÓLIO (INCLUI CUSTOS DE INSUMOS) */}
           <section className="card" style={{ marginBottom: '32px' }}>
             <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ fontSize: 15, margin: 0, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -564,13 +618,13 @@ export default function AiBreakdownPage() {
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '8px 0 4px' }}>
                     <p className="font-mono" style={{ fontSize: 24, fontWeight: 800, color: displayMarginPct >= 0 ? TOKENS.primary : TOKENS.danger, margin: 0 }}>{pct(displayMarginPct)}</p>
                   </div>
-                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>{brl(displayProfit)} / unidade</span>
+                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>{brl(displayProfit)} / unidade (Líquida)</span>
                 </div>
 
                 <div className="kpi-card">
                   <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Custo Médio Unitário</span>
                   <p className="font-mono" style={{ fontSize: 24, fontWeight: 800, color: TOKENS.textMain, margin: '8px 0 4px' }}>{brl(displayUnitCost)}</p>
-                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>Com Absorção Fixo</span>
+                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>Insumos + Absorção Fixo</span>
                 </div>
 
                 <div className="kpi-card">
@@ -582,7 +636,7 @@ export default function AiBreakdownPage() {
             </div>
           </section>
 
-          {/* FORMULÁRIOS DE ENTRADA (CUSTOS FIXOS PRIMEIRO) */}
+          {/* FORMULÁRIOS DE ENTRADA (CUSTOS FIXOS, PARÂMETROS COMERCIAIS & BANCO DE INSUMOS) */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '32px' }}>
             
             {/* 1. CUSTOS FIXOS (OPEX) */}
@@ -650,6 +704,76 @@ export default function AiBreakdownPage() {
               </div>
             </section>
           </div>
+
+          {/* BANCO DE INSUMOS & MATÉRIAS-PRIMAS */}
+          <section className="card" style={{ marginBottom: '32px' }}>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: 15, margin: 0, fontWeight: 700 }}>📦 Banco Global de Insumos & Matérias-Primas</h2>
+              <span style={{ fontSize: 12, color: TOKENS.textMuted }}>{rawMaterials.length} Insumos Cadastrados</span>
+            </div>
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Adicionar Insumo */}
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: 12 }}>
+                <input type="text" className="input-b2b" placeholder="Nome do Insumo / Matéria-Prima (Ex: Carne Bovina 180g)" value={newRmName} onChange={e => setNewRmName(e.target.value)} />
+                <input type="number" step="0.01" className="input-b2b" placeholder="Preço (R$)" value={newRmPrice} onChange={e => setNewRmPrice(e.target.value)} />
+                <select className="input-b2b" value={newRmUnit} onChange={e => setNewRmUnit(e.target.value)}>
+                  {UNIDADES_MEDIDA.map(u => <option key={u.code} value={u.code}>{u.code}</option>)}
+                </select>
+                <button type="button" onClick={handleAddRawMaterial} className="btn btn-outline">+ Add Insumo</button>
+              </div>
+
+              {/* Tabela de Insumos Cadastrados com Edição Inline */}
+              <div style={{ overflowX: 'auto', background: TOKENS.bgApp, borderRadius: 8, border: `1px solid ${TOKENS.border}` }}>
+                <table className="bom-table">
+                  <thead>
+                    <tr>
+                      <th>Insumo / Matéria-Prima</th>
+                      <th style={{ width: '20%' }}>Unidade</th>
+                      <th style={{ width: '25%', textAlign: 'right' }}>Preço de Custo</th>
+                      <th style={{ width: '15%', textAlign: 'right' }}>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rawMaterials.map(rm => (
+                      <tr key={rm.id}>
+                        {editingRmId === rm.id ? (
+                          <>
+                            <td>
+                              <input type="text" className="input-b2b" style={{ padding: '4px 8px' }} value={editingRmName} onChange={e => setEditingRmName(e.target.value)} />
+                            </td>
+                            <td>
+                              <select className="input-b2b" style={{ padding: '4px 8px' }} value={editingRmUnit} onChange={e => setEditingRmUnit(e.target.value)}>
+                                {UNIDADES_MEDIDA.map(u => <option key={u.code} value={u.code}>{u.code}</option>)}
+                              </select>
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                              <input type="number" step="0.01" className="input-b2b" style={{ padding: '4px 8px', width: 120, textAlign: 'right' }} value={editingRmPrice} onChange={e => setEditingRmPrice(e.target.value)} />
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                                <button onClick={handleSaveEditRm} className="btn btn-primary" style={{ padding: '4px 8px', fontSize: 11 }}>OK</button>
+                                <button onClick={() => setEditingRmId(null)} className="btn btn-outline" style={{ padding: '4px 8px', fontSize: 11 }}>Cancel</button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td style={{ fontWeight: 600 }}>{rm.name}</td>
+                            <td><span style={{ background: TOKENS.bgCardElevated, padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{rm.unit}</span></td>
+                            <td className="font-mono" style={{ textAlign: 'right', fontWeight: 700, color: TOKENS.primary }}>{brl(rm.price)} / {rm.unit}</td>
+                            <td style={{ textAlign: 'right' }}>
+                              <button onClick={() => handleStartEditRm(rm)} className="btn-ghost" style={{ fontSize: 12, padding: '2px 6px' }}>✏️</button>
+                              <button onClick={() => handleRemoveRawMaterial(rm.id)} className="btn-ghost" style={{ color: TOKENS.danger, padding: '2px 6px' }}>✕</button>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
 
           {/* ESTRUTURA DE CUSTOS (BOM) */}
           <section className="card" style={{ marginBottom: '32px' }}>
