@@ -267,8 +267,10 @@ export default function AiBreakdownPage() {
 
   const portfolioTotalVol = breakdowns.reduce((acc, b) => acc + (parseFloat(b.projectedVolume) || 100), 0)
 
+  // Variáveis de exibição no Dashboard (Consolidação x Produto Ativo)
   const displayRevenue = livePrice > 0 ? liveProjRev : portfolioTotalRev
   const displayPrice = livePrice > 0 ? livePrice : (breakdowns.length > 0 ? portfolioTotalRev / (portfolioTotalVol || 1) : 0)
+  const displayVolume = livePrice > 0 ? liveVol : portfolioTotalVol
   const displayUnitCost = livePrice > 0 ? curTotalCost : (breakdowns.length > 0 ? (totalFixedCostsGlobal / (portfolioTotalVol || 1)) : 0)
 
   const curProfit = livePrice > 0 ? (livePrice - curTotalCost) : (displayPrice - displayUnitCost)
@@ -337,10 +339,6 @@ export default function AiBreakdownPage() {
   }
 
   function handleRemoveBlock(id: string) { setBlocks(prev => prev.filter(b => b.id !== id)) }
-
-  function handleUpdateBlockValue(id: string, field: 'currentCost' | 'targetCost', value: string) {
-    setBlocks(prev => prev.map(b => (b.id === id ? { ...b, [field]: parseFloat(value) || 0 } : b)))
-  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
