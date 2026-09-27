@@ -59,19 +59,19 @@ export default function AiBreakdownPage() {
   const [selectedId, setSelectedId]   = useState<string | null>(null)
 
   // Estado da Ficha de Produto
-  const [productName, setProductName]   = useState('')
-  const [sellingPrice, setSellingPrice] = useState('')
+  const [productName, setProductName]     = useState('')
+  const [sellingPrice, setSellingPrice]   = useState('')
   const [markupPercent, setMarkupPercent] = useState('')
+
+  // Controle de adição de subitens por formulário expandido no bloco
+  const [activeSubItemFormBlockId, setActiveSubItemFormBlockId] = useState<string | null>(null)
+  const [subItemName, setSubItemName]         = useState('')
+  const [subItemQty, setSubItemQty]           = useState('1')
+  const [subItemUnitCost, setSubItemUnitCost] = useState('')
 
   // Blocos e Subitens
   const [blocks, setBlocks] = useState<BreakdownBlockItem[]>([
-    {
-      id: '1',
-      name: 'Matéria-Prima / Insumos',
-      currentCost: 0,
-      targetCost: 0,
-      subItems: []
-    },
+    { id: '1', name: 'Matéria-Prima / Insumos', currentCost: 0, targetCost: 0, subItems: [] },
     { id: '2', name: 'Mão de Obra Direta', currentCost: 0, targetCost: 0, subItems: [] },
     { id: '3', name: 'Energia / Utilidades', currentCost: 0, targetCost: 0, subItems: [] },
   ])
@@ -84,9 +84,7 @@ export default function AiBreakdownPage() {
       setCarregando(true)
       const profile = await getUserProfileState(uid)
       
-      // Fallback seguro de ID da organização
       let targetOrgId = profile.success && profile.company ? profile.company.id : null
-
       if (!targetOrgId) {
         targetOrgId = uid
       }
@@ -175,21 +173,17 @@ export default function AiBreakdownPage() {
     }
   }
 
-  // Adicionar e Gerenciar Subitens dentro de um Bloco
-  function handleAddSubItem(blockId: string) {
-    const subName = prompt('Nome do ingrediente/insumo (ex: Queijo, Carne, Pão):')
-    if (!subName) return
+  // Formulário Direto de Subitem
+  function handleSaveSubItem(blockId: string) {
+    if (!subItemName.trim()) return
 
-    const qtyStr = prompt('Quantidade utilizada (ex: 0.02 para 20g se o preço for por kg, ou 1 para un):', '1')
-    const unitPriceStr = prompt('Preço por unidade/kg (R$):', '0')
-
-    const qty = parseFloat(qtyStr || '1') || 1
-    const unitPrice = parseFloat(unitPriceStr || '0') || 0
+    const qty = parseFloat(subItemQty) || 1
+    const unitPrice = parseFloat(subItemUnitCost) || 0
     const totalCost = qty * unitPrice
 
     const newSub: SubItem = {
       id: Date.now().toString(),
-      name: subName,
+      name: subItemName.trim(),
       quantity: qty,
       unitCost: unitPrice,
       totalCost,
@@ -209,6 +203,12 @@ export default function AiBreakdownPage() {
         return b
       })
     )
+
+    // Resetar o mini formulário
+    setSubItemName('')
+    setSubItemQty('1')
+    setSubItemUnitCost('')
+    setActiveSubItemFormBlockId(null)
   }
 
   function handleRemoveSubItem(blockId: string, subId: string) {
@@ -240,6 +240,15 @@ export default function AiBreakdownPage() {
 
   function handleRemoveBlock(id: string) {
     setBlocks(prev => prev.filter(b => b.id !== id))
+  }
+
+  function handleRenameBlock(id: string) {
+    const b = blocks.find(x => x.id === id)
+    if (!b) return
+    const newName = prompt('Novo nome para este bloco de custo:', b.name)
+    if (newName && newName.trim()) {
+      setBlocks(prev => prev.map(x => (x.id === id ? { ...x, name: newName.trim() } : x)))
+    }
   }
 
   function handleUpdateBlockValue(id: string, field: 'currentCost' | 'targetCost', value: string) {
@@ -411,10 +420,10 @@ export default function AiBreakdownPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 800, color: NAVY, margin: 0 }}>
-              DeuAcordo Breakdown — Ficha Térmica & Cost Breakdown
+              DeuAcordo Breakdown — Ficha Técnica & Cost Breakdown
             </h1>
             <p style={{ fontSize: 12, color: MUTED, margin: '2px 0 0' }}>
-              Defina os componentes do produto, calcule o markup e acompanhe os targets de custos.
+              Estruturação dinâmica de custos por componentes e ingredientes.
             </p>
           </div>
 
@@ -451,7 +460,7 @@ export default function AiBreakdownPage() {
 
         <form onSubmit={handleSave}>
           
-          {/* Blocos de Entrada Básica + Markup em Tempo Real */}
+          {/* Precificação Básica */}
           <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '1.25rem 1.5rem', marginBottom: '1.5rem' }}>
             <h3 style={{ fontSize: 13, fontWeight: 800, color: NAVY, margin: '0 0 1rem', textTransform: 'uppercase' }}>
               1. Precificação do Produto
@@ -459,11 +468,11 @@ export default function AiBreakdownPage() {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 200px 180px', gap: '1rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 4 }}>NOME DO PRODUTO *</label>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 4 }}>NOME DO PRODUTO / ITEM *</label>
                 <input
                   type="text"
                   required
-                  placeholder="Ex: X-Salada Especial / Pneu Aro 16"
+                  placeholder="Ex: X-Salada Especial / Lote de Embalagens"
                   value={productName}
                   onChange={e => setProductName(e.target.value)}
                   style={{ width: '100%', padding: '10px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 13, outline: 'none' }}
@@ -521,7 +530,7 @@ export default function AiBreakdownPage() {
                   <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 4 }}>OU DIGITE UM BLOCO PERSONALIZADO</label>
                   <input
                     type="text"
-                    placeholder="Ex: Embalagens, Impostos..."
+                    placeholder="Ex: Licenciamento, Software, Marketing..."
                     value={customCategory}
                     onChange={e => setCustomCategory(e.target.value)}
                     style={{ width: '100%', padding: '9px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12.5 }}
@@ -538,10 +547,10 @@ export default function AiBreakdownPage() {
               </div>
             </div>
 
-            {/* Visualização Espelhada (Atual vs Target) com suporte a Subitens */}
+            {/* Espelhamento dos Cenários: Atual vs Target */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
               
-              {/* CUSTO ATUAL (Com botão de Subitens) */}
+              {/* CUSTO ATUAL (Blocos & Form Inline de Subitens) */}
               <div style={{ background: SLATE, borderRadius: 12, padding: '1.25rem', border: `1px solid ${BORDER}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <h4 style={{ fontSize: 13, fontWeight: 800, color: NAVY, margin: 0 }}>📊 Cost Breakdown Atual</h4>
@@ -550,14 +559,23 @@ export default function AiBreakdownPage() {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   {blocks.map(b => (
-                    <div key={b.id} style={{ background: WHITE, padding: '10px', borderRadius: 8, border: `1px solid ${BORDER}` }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{b.name}</span>
+                    <div key={b.id} style={{ background: WHITE, padding: '12px', borderRadius: 8, border: `1px solid ${BORDER}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{b.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRenameBlock(b.id)}
+                            style={{ background: 'none', border: 'none', fontSize: 10, color: MUTED, cursor: 'pointer' }}
+                          >
+                            ✏️ Editar Nome
+                          </button>
+                        </div>
                         <div style={{ display: 'flex', gap: 6 }}>
                           <button
                             type="button"
-                            onClick={() => handleAddSubItem(b.id)}
-                            style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '2px 6px', cursor: 'pointer' }}
+                            onClick={() => setActiveSubItemFormBlockId(activeSubItemFormBlockId === b.id ? null : b.id)}
+                            style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '3px 8px', cursor: 'pointer' }}
                           >
                             + Subitem / Ingrediente
                           </button>
@@ -571,20 +589,74 @@ export default function AiBreakdownPage() {
                         </div>
                       </div>
 
-                      {/* Lista de Subitens se existirem */}
-                      {b.subItems && b.subItems.length > 0 ? (
-                        <div style={{ marginBottom: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {/* Lista de Subitens Inseridos */}
+                      {b.subItems && b.subItems.length > 0 && (
+                        <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
                           {b.subItems.map(sub => (
-                            <div key={sub.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: SLATE, padding: '4px 8px', borderRadius: 4, fontSize: 11 }}>
-                              <span>{sub.name} ({sub.quantity} un/kg x {brl(sub.unitCost)})</span>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div key={sub.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: SLATE, padding: '6px 10px', borderRadius: 6, fontSize: 11 }}>
+                              <span><strong>{sub.name}</strong> ({sub.quantity} un/kg x {brl(sub.unitCost)})</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span style={{ fontWeight: 700, color: NAVY }}>{brl(sub.totalCost)}</span>
                                 <button type="button" onClick={() => handleRemoveSubItem(b.id, sub.id)} style={{ color: RED, border: 'none', background: 'none', cursor: 'pointer' }}>✕</button>
                               </div>
                             </div>
                           ))}
+                          <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 700, color: NAVY, marginTop: 2 }}>
+                            Subtotal do Bloco: {brl(b.currentCost)}
+                          </div>
                         </div>
-                      ) : (
+                      )}
+
+                      {/* Mini Formulário Inline para Subitens (sem Pop-up) */}
+                      {activeSubItemFormBlockId === b.id && (
+                        <div style={{ background: '#F0FDF4', border: '1px solid #A7F3D0', borderRadius: 6, padding: '8px', marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <span style={{ fontSize: 10, fontWeight: 800, color: '#065F46', textTransform: 'uppercase' }}>Adicionar Insumo/Ingrediente</span>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 90px', gap: 6 }}>
+                            <input
+                              type="text"
+                              placeholder="Nome (ex: Queijo, Pão)"
+                              value={subItemName}
+                              onChange={e => setSubItemName(e.target.value)}
+                              style={{ padding: '6px', fontSize: 11, border: `1px solid ${BORDER}`, borderRadius: 4 }}
+                            />
+                            <input
+                              type="number"
+                              step="0.001"
+                              placeholder="Qtd (ex: 0.02)"
+                              value={subItemQty}
+                              onChange={e => setSubItemQty(e.target.value)}
+                              style={{ padding: '6px', fontSize: 11, border: `1px solid ${BORDER}`, borderRadius: 4 }}
+                            />
+                            <input
+                              type="number"
+                              step="0.01"
+                              placeholder="R$/unidade"
+                              value={subItemUnitCost}
+                              onChange={e => setSubItemUnitCost(e.target.value)}
+                              style={{ padding: '6px', fontSize: 11, border: `1px solid ${BORDER}`, borderRadius: 4 }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                            <button
+                              type="button"
+                              onClick={() => setActiveSubItemFormBlockId(null)}
+                              style={{ padding: '4px 8px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 4, fontSize: 10, cursor: 'pointer' }}
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveSubItem(b.id)}
+                              style={{ padding: '4px 10px', background: E, color: WHITE, border: 'none', borderRadius: 4, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}
+                            >
+                              Adicionar
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Campo Direto quando o bloco não possui subitens */}
+                      {(!b.subItems || b.subItems.length === 0) && (
                         <input
                           type="number" step="0.01" placeholder="0.00"
                           value={b.currentCost || ''}
@@ -621,8 +693,10 @@ export default function AiBreakdownPage() {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   {blocks.map(b => (
-                    <div key={b.id} style={{ background: WHITE, padding: '10px', borderRadius: 8, border: '1px solid #A7F3D0' }}>
-                      <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#065F46', marginBottom: 4 }}>TARGET {b.name.toUpperCase()}</span>
+                    <div key={b.id} style={{ background: WHITE, padding: '12px', borderRadius: 8, border: '1px solid #A7F3D0' }}>
+                      <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#065F46', marginBottom: 4 }}>
+                        TARGET {b.name.toUpperCase()}
+                      </span>
                       <input
                         type="number" step="0.01" placeholder="0.00"
                         value={b.targetCost || ''}
@@ -648,7 +722,7 @@ export default function AiBreakdownPage() {
             </div>
           </div>
 
-          {/* Resumo do GAP */}
+          {/* Oportunidade do GAP */}
           <div style={{ background: '#ECFDF5', border: '1.5px solid #A7F3D0', borderRadius: 14, padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <p style={{ fontSize: 11, fontWeight: 800, color: '#065F46', letterSpacing: '0.07em', textTransform: 'uppercase', margin: 0 }}>
