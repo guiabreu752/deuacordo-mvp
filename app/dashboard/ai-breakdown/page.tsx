@@ -14,17 +14,22 @@ import {
 } from '@/app/actions/breakdown'
 import { getUserProfileState } from '@/app/actions/user'
 
-// ── DESIGN SYSTEM B2B DEUACORDO ──
-const DARK_BG     = '#0F172A' // Dark Slate Executivo
-const DARK_CARD   = '#1E293B' // Card Slate
-const E           = '#10B981' // Verde Neon / Elétrico
-const E_LIGHT     = '#ECFDF5' // Esmeralda Soft
-const E_BORDER    = '#A7F3D0' // Borda Esmeralda
-const MUTED       = '#64748B' // Texto Secundário
-const BORDER      = '#E2E8F0' // Borda Suave Light
-const SLATE       = '#F8FAFC' // Fundo Geral Light
-const WHITE       = '#FFFFFF'
-const RED         = '#EF4444'
+// ── DESIGN SYSTEM B2B DEUACORDO (TOKENS EXECUTIVOS) ──
+const TOKENS = {
+  bgApp: '#020617',
+  bgSidebar: '#0F172A',
+  bgCard: '#1E293B',
+  bgCardElevated: '#334155',
+  primary: '#10B981', // Verde Neon / Elétrico
+  primaryHover: '#059669',
+  primaryLight: 'rgba(16, 185, 129, 0.1)',
+  textMain: '#F8FAFC',
+  textMuted: '#94A3B8',
+  border: '#334155',
+  borderLight: '#475569',
+  danger: '#EF4444',
+  dangerLight: 'rgba(239, 68, 68, 0.1)',
+}
 
 const ECOSSISTEMA_PRODUTOS = [
   { id: 'deal-desk',    name: 'Deal Desk',     icon: '🤝', active: true,  href: '/dashboard' },
@@ -41,18 +46,21 @@ const ECOSSISTEMA_PRODUTOS = [
 ]
 
 const UNIDADES_MEDIDA = [
-  { label: 'Quilograma (kg)', code: 'kg' },
-  { label: 'Grama (g)', code: 'g' },
-  { label: 'Unidade (un)', code: 'un' },
-  { label: 'Litro (L)', code: 'L' },
-  { label: 'Mililitro (ml)', code: 'ml' },
-  { label: 'Metro (m)', code: 'm' },
-  { label: 'Hora/Homem (h)', code: 'h' },
-  { label: 'Caixa (cx)', code: 'cx' },
+  { label: 'kg', code: 'kg' },
+  { label: 'g', code: 'g' },
+  { label: 'un', code: 'un' },
+  { label: 'L', code: 'L' },
+  { label: 'ml', code: 'ml' },
+  { label: 'm', code: 'm' },
+  { label: 'h', code: 'h' },
+  { label: 'cx', code: 'cx' },
 ]
 
 const brl = (n: number) =>
-  n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(isNaN(n) ? 0 : n)
+
+const pct = (n: number) =>
+  new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }).format(isNaN(n) ? 0 : n) + '%'
 
 const BLOCOS_SUGERIDOS = [
   'Matéria-Prima / Insumos',
@@ -64,23 +72,9 @@ const BLOCOS_SUGERIDOS = [
   'Serviços Terceirizados / Usinagem'
 ]
 
-interface FixedCost {
-  id: string
-  name: string
-  value: number
-}
-
-interface RawMaterial {
-  id: string
-  name: string
-  price: number
-  unit: string
-}
-
-interface DetailedSubItem extends SubItem {
-  scrapRate?: number
-  notes?: string
-}
+interface FixedCost { id: string; name: string; value: number }
+interface RawMaterial { id: string; name: string; price: number; unit: string }
+interface DetailedSubItem extends SubItem { scrapRate?: number; notes?: string }
 
 export default function AiBreakdownPage() {
   const router = useRouter()
@@ -96,21 +90,20 @@ export default function AiBreakdownPage() {
   const [newFcName, setNewFcName]   = useState('')
   const [newFcValue, setNewFcValue] = useState('')
 
-  // 2. Banco / Estoque de Matérias-Primas Cadastradas
+  // 2. Banco de Insumos / Matérias-Primas
   const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([])
   const [newRmName, setNewRmName]       = useState('')
   const [newRmPrice, setNewRmPrice]     = useState('')
-  const [newRmUnit, setNewRmUnit]       = useState('kg')
+  var [newRmUnit, setNewRmUnit]       = useState('kg')
 
-  // 3. Ficha de Produto, Volume & Tributos
+  // 3. Ficha de Produto & Tributação
   const [productName, setProductName]         = useState('')
   const [sellingPrice, setSellingPrice]       = useState('')
-  const [projectedVolume, setProjectedVolume] = useState('100') // CORREÇÃO BUG: Inicia dinâmico flexível
+  const [projectedVolume, setProjectedVolume] = useState('100')
   const [markupPercent, setMarkupPercent]     = useState('')
   const [taxRateOnSales, setTaxRateOnSales]   = useState('0')
 
-  // Subitens
-  const [activeBlockForSub, setActiveBlockForSub] = useState<string | null>(null)
+  // Estado do Form de Subitens
   const [selectedRmId, setSelectedRmId]         = useState<string>('')
   const [subName, setSubName]                     = useState('')
   const [subQty, setSubQty]                       = useState('1')
@@ -118,18 +111,16 @@ export default function AiBreakdownPage() {
   const [subScrapRate, setSubScrapRate]           = useState('0')
   const [calculatedSubCost, setCalculatedSubCost] = useState<number>(0)
 
-  // Inline Block Renaming
   const [editingBlockId, setEditingBlockId]     = useState<string | null>(null)
   const [editingBlockName, setEditingBlockName] = useState('')
 
-  // Blocos Variáveis
+  // Blocos de Custo
   const [blocks, setBlocks] = useState<BreakdownBlockItem[]>([
     { id: '1', name: 'Matéria-Prima / Insumos', currentCost: 0, targetCost: 0, subItems: [] },
     { id: '2', name: 'Mão de Obra Direta & Encargos', currentCost: 0, targetCost: 0, subItems: [] },
   ])
 
   const [customCategory, setCustomCategory] = useState('')
-  const [selectedPreset, setSelectedPreset] = useState('')
 
   const initData = useCallback(async (uid: string) => {
     try {
@@ -139,18 +130,16 @@ export default function AiBreakdownPage() {
       if (!targetOrgId) targetOrgId = uid
       setOrgId(targetOrgId)
 
-      // Carregar Custos Fixos
       const savedFC = localStorage.getItem(`deuacordo_fc_${targetOrgId}`)
       if (savedFC) setFixedCosts(JSON.parse(savedFC))
-      else setFixedCosts([{ id: '1', name: 'Aluguel & Infraestrutura Industrial', value: 2500 }])
+      else setFixedCosts([{ id: '1', name: 'Sede Administrativa / Infraestrutura', value: 8500 }])
 
-      // Carregar Matérias-Primas Cadastradas
       const savedRM = localStorage.getItem(`deuacordo_rm_${targetOrgId}`)
       if (savedRM) setRawMaterials(JSON.parse(savedRM))
       else setRawMaterials([
         { id: '1', name: 'Aço Inox 304 (Chapa)', price: 28.50, unit: 'kg' },
         { id: '2', name: 'Mão de Obra Operador CNC', price: 45.00, unit: 'h' },
-        { id: '3', name: 'Embalagem de Papelão Reforçada', price: 3.20, unit: 'un' }
+        { id: '3', name: 'Embalagem Reforçada', price: 3.20, unit: 'un' }
       ])
 
       const res = await getBreakdownsByOrganization(targetOrgId)
@@ -167,52 +156,44 @@ export default function AiBreakdownPage() {
   useEffect(() => {
     async function checkUser() {
       const { data: { user: u } } = await supabase.auth.getUser()
-      if (!u) {
-        router.replace('/login')
-        return
-      }
+      if (!u) { router.replace('/login'); return }
       setUser(u)
       await initData(u.id)
     }
     checkUser()
   }, [router, initData])
 
-  // Cálculo Automático do Subitem com Conversão e Perda Operacional (Refugo)
   useEffect(() => {
     const rm = rawMaterials.find(m => m.id === selectedRmId)
     const qty = parseFloat(subQty) || 0
     const scrapPct = parseFloat(subScrapRate) || 0
-
     let baseCost = 0
 
     if (rm) {
       setSubName(rm.name)
-      if (rm.unit === 'kg' && subUnit === 'g') {
-        baseCost = (rm.price / 1000) * qty
-      } else if (rm.unit === 'L' && subUnit === 'ml') {
-        baseCost = (rm.price / 1000) * qty
-      } else {
-        baseCost = rm.price * qty
-      }
+      if (rm.unit === 'kg' && subUnit === 'g') baseCost = (rm.price / 1000) * qty
+      else if (rm.unit === 'L' && subUnit === 'ml') baseCost = (rm.price / 1000) * qty
+      else baseCost = rm.price * qty
     } else if (subName && !selectedRmId) {
       const unitPrice = parseFloat(subUnit) || 0
       baseCost = qty * unitPrice
     }
 
-    const totalCostWithScrap = baseCost * (1 + scrapPct / 100)
-    setCalculatedSubCost(totalCostWithScrap)
+    setCalculatedSubCost(baseCost * (1 + scrapPct / 100))
   }, [selectedRmId, subQty, subUnit, subScrapRate, rawMaterials, subName])
 
-  // CORREÇÃO DO BUG: Carrega a quantidade exata do produto sem travar em 1000
+  // CORREÇÃO CRÍTICA DO BUG 2: Carrega dinamicamente a quantidade do produto sem travar
   function loadBreakdownIntoForm(b: any) {
     setSelectedId(b.id)
-    setProductName(b.productName)
-    setSellingPrice(String(b.sellingPrice))
-    setProjectedVolume(b.projectedVolume !== undefined && b.projectedVolume !== null ? String(b.projectedVolume) : '100')
+    setProductName(b.productName || '')
+    setSellingPrice(b.sellingPrice !== undefined && b.sellingPrice !== null ? String(b.sellingPrice) : '')
+    
+    // Tratamento dinâmico para projectedVolume
+    const vol = b.projectedVolume !== undefined && b.projectedVolume !== null ? String(b.projectedVolume) : '100'
+    setProjectedVolume(vol)
+    
     setMarkupPercent(b.currentMarkup ? b.currentMarkup.toFixed(1) : '')
-    if (Array.isArray(b.blocks)) {
-      setBlocks(b.blocks)
-    }
+    if (Array.isArray(b.blocks)) setBlocks(b.blocks)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -229,57 +210,35 @@ export default function AiBreakdownPage() {
     ])
   }
 
+  const persistFC = (data: FixedCost[]) => { setFixedCosts(data); if (orgId) localStorage.setItem(`deuacordo_fc_${orgId}`, JSON.stringify(data)) }
+  const persistRM = (data: RawMaterial[]) => { setRawMaterials(data); if (orgId) localStorage.setItem(`deuacordo_rm_${orgId}`, JSON.stringify(data)) }
+
   function handleAddFixedCost() {
     if (!newFcName.trim() || !newFcValue) return
-    const newFc: FixedCost = {
-      id: Date.now().toString(),
-      name: newFcName.trim(),
-      value: parseFloat(newFcValue) || 0
-    }
-    const updated = [...fixedCosts, newFc]
-    setFixedCosts(updated)
-    if (orgId) localStorage.setItem(`deuacordo_fc_${orgId}`, JSON.stringify(updated))
-    setNewFcName('')
-    setNewFcValue('')
+    persistFC([...fixedCosts, { id: Date.now().toString(), name: newFcName.trim(), value: parseFloat(newFcValue) || 0 }])
+    setNewFcName(''); setNewFcValue('')
   }
 
-  function handleRemoveFixedCost(id: string) {
-    const updated = fixedCosts.filter(fc => fc.id !== id)
-    setFixedCosts(updated)
-    if (orgId) localStorage.setItem(`deuacordo_fc_${orgId}`, JSON.stringify(updated))
-  }
+  function handleRemoveFixedCost(id: string) { persistFC(fixedCosts.filter(fc => fc.id !== id)) }
 
   function handleAddRawMaterial() {
     if (!newRmName.trim() || !newRmPrice) return
-    const newRm: RawMaterial = {
-      id: Date.now().toString(),
-      name: newRmName.trim(),
-      price: parseFloat(newRmPrice) || 0,
-      unit: newRmUnit
-    }
-    const updated = [...rawMaterials, newRm]
-    setRawMaterials(updated)
-    if (orgId) localStorage.setItem(`deuacordo_rm_${orgId}`, JSON.stringify(updated))
-    setNewRmName('')
-    setNewRmPrice('')
+    persistRM([...rawMaterials, { id: Date.now().toString(), name: newRmName.trim(), price: parseFloat(newRmPrice) || 0, unit: newRmUnit }])
+    setNewRmName(''); setNewRmPrice('')
   }
 
-  function handleRemoveRawMaterial(id: string) {
-    const updated = rawMaterials.filter(rm => rm.id !== id)
-    setRawMaterials(updated)
-    if (orgId) localStorage.setItem(`deuacordo_rm_${orgId}`, JSON.stringify(updated))
-  }
+  function handleRemoveRawMaterial(id: string) { persistRM(rawMaterials.filter(rm => rm.id !== id)) }
 
-  // 🧮 CÁLCULOS DO BREAKDOWN & DILUIÇÃO REAL
+  // 🧮 CÁLCULOS FINANCEIROS DO PRODUTO ATIVO
   const totalFixedCostsGlobal = fixedCosts.reduce((acc, fc) => acc + fc.value, 0)
-  
   const livePrice = parseFloat(sellingPrice) || 0
-  const liveVol   = parseFloat(projectedVolume) || 0 // Lê exatamente a quantidade do usuário
+  const liveVol   = Math.max(parseFloat(projectedVolume) || 0, 1) // Previne divisão por zero
   const taxPct    = parseFloat(taxRateOnSales) || 0
   
   const taxAmountPerUnit = livePrice * (taxPct / 100)
-  const liveProjRev = livePrice * liveVol // FATURAMENTO PROJETADO
+  const liveProjRev = livePrice * liveVol
 
+  // Rateio de Custo Fixo por Faturamento
   let otherProjRev = 0
   breakdowns.forEach(b => {
     if (b.id !== selectedId) {
@@ -291,8 +250,7 @@ export default function AiBreakdownPage() {
 
   const totalProjRev = liveProjRev + otherProjRev
   const currentProductWeight = totalProjRev > 0 ? (liveProjRev / totalProjRev) : (liveProjRev > 0 ? 1 : 0)
-  
-  const allocatedFixedCost = totalFixedCostsGlobal * currentProductWeight
+  const allocatedFixedCost = totalFixedCostsGlobal * (currentProductWeight || 1)
   const dilutedFixedCostPerUnit = liveVol > 0 ? allocatedFixedCost / liveVol : 0
 
   const variableTotalCost = blocks.reduce((acc, b) => {
@@ -302,18 +260,36 @@ export default function AiBreakdownPage() {
     return acc + (b.currentCost || 0)
   }, 0)
 
-  const variableTarCost = blocks.reduce((acc, b) => acc + (b.targetCost || 0), 0)
-
   const curTotalCost = variableTotalCost + dilutedFixedCostPerUnit + taxAmountPerUnit
-  const tarTotalCost = variableTarCost + dilutedFixedCostPerUnit + taxAmountPerUnit
+
+  // CORREÇÃO CRÍTICA DO BUG 1: CONSOLIDAÇÃO SE NENHUM PRODUTO ESTIVER EM EDIÇÃO
+  const portfolioTotalRev = breakdowns.reduce((acc, b) => {
+    const p = parseFloat(b.sellingPrice) || 0
+    const v = parseFloat(b.projectedVolume) || 100
+    return acc + (p * v)
+  }, 0)
+
+  const portfolioTotalVol = breakdowns.reduce((acc, b) => acc + (parseFloat(b.projectedVolume) || 100), 0)
+
+  // Métricas Exibidas no Dashboard (Módulos dinâmicos)
+  const displayRevenue = livePrice > 0 ? liveProjRev : portfolioTotalRev
+  const displayPrice = livePrice > 0 ? livePrice : (breakdowns.length > 0 ? portfolioTotalRev / (portfolioTotalVol || 1) : 0)
+  const displayVolume = livePrice > 0 ? liveVol : portfolioTotalVol
+  const displayUnitCost = livePrice > 0 ? curTotalCost : (breakdowns.length > 0 ? (totalFixedCostsGlobal / (portfolioTotalVol || 1)) : 0)
+
+  const curProfit = livePrice > 0 ? (livePrice - curTotalCost) : (displayPrice - displayUnitCost)
+  const profitMarginPercent = displayPrice > 0 ? ((curProfit / displayPrice) * 100) : 0
+  
+  const unitContributionMargin = livePrice > 0 ? (livePrice - variableTotalCost - taxAmountPerUnit) : (displayPrice - (variableTotalCost || 0))
+  const contributionMarginPercent = displayPrice > 0 ? ((unitContributionMargin / displayPrice) * 100) : 0
+  const breakEvenUnits = unitContributionMargin > 0 ? Math.ceil((allocatedFixedCost || totalFixedCostsGlobal) / unitContributionMargin) : 0
 
   const handleSellingPriceChange = (val: string) => {
     setSellingPrice(val)
     const price = parseFloat(val) || 0
     if (curTotalCost > 0 && price > 0) {
       const profit = price - curTotalCost
-      const mk = (profit / curTotalCost) * 100
-      setMarkupPercent(mk.toFixed(1))
+      setMarkupPercent(((profit / curTotalCost) * 100).toFixed(1))
     }
   }
 
@@ -331,102 +307,70 @@ export default function AiBreakdownPage() {
     if (!subName.trim()) return
     const qty = parseFloat(subQty) || 1
     const scrap = parseFloat(subScrapRate) || 0
-
     const newSub: DetailedSubItem = {
       id: Date.now().toString(),
-      name: `${subName.trim()} (${qty} ${subUnit}${scrap > 0 ? ` +${scrap}% refugo` : ''})`,
+      name: `${subName.trim()} (${qty} ${subUnit})`,
       quantity: qty,
       unitCost: calculatedSubCost / (qty || 1),
       totalCost: calculatedSubCost,
       scrapRate: scrap
     }
 
-    setBlocks(prev =>
-      prev.map(b => {
-        if (b.id === blockId) {
-          const updatedSub = [...(b.subItems || []), newSub]
-          const newBlockCost = updatedSub.reduce((sum, s) => sum + s.totalCost, 0)
-          return { ...b, subItems: updatedSub, currentCost: newBlockCost }
-        }
-        return b
-      })
-    )
+    setBlocks(prev => prev.map(b => {
+      if (b.id === blockId) {
+        const updatedSub = [...(b.subItems || []), newSub]
+        return { ...b, subItems: updatedSub, currentCost: updatedSub.reduce((sum, s) => sum + s.totalCost, 0) }
+      }
+      return b
+    }))
 
-    setSelectedRmId('')
-    setSubName('')
-    setSubQty('1')
-    setSubScrapRate('0')
-    setCalculatedSubCost(0)
-    setActiveBlockForSub(null)
+    setSelectedRmId(''); setSubName(''); setSubQty('1'); setSubScrapRate('0'); setCalculatedSubCost(0)
   }
 
   function handleRemoveSubItem(blockId: string, subId: string) {
-    setBlocks(prev =>
-      prev.map(b => {
-        if (b.id === blockId) {
-          const updatedSub = (b.subItems || []).filter(s => s.id !== subId)
-          const newBlockCost = updatedSub.reduce((sum, s) => sum + s.totalCost, 0)
-          return { ...b, subItems: updatedSub, currentCost: newBlockCost }
-        }
-        return b
-      })
-    )
+    setBlocks(prev => prev.map(b => {
+      if (b.id === blockId) {
+        const updatedSub = (b.subItems || []).filter(s => s.id !== subId)
+        return { ...b, subItems: updatedSub, currentCost: updatedSub.reduce((sum, s) => sum + s.totalCost, 0) }
+      }
+      return b
+    }))
   }
 
   function handleAddBlock(nameToAdd: string) {
     if (!nameToAdd.trim()) return
-    setBlocks(prev => [
-      ...prev,
-      { id: Date.now().toString(), name: nameToAdd.trim(), currentCost: 0, targetCost: 0, subItems: [] }
-    ])
+    setBlocks(prev => [...prev, { id: Date.now().toString(), name: nameToAdd.trim(), currentCost: 0, targetCost: 0, subItems: [] }])
     setCustomCategory('')
-    setSelectedPreset('')
   }
 
-  function handleRemoveBlock(id: string) {
-    setBlocks(prev => prev.filter(b => b.id !== id))
-  }
+  function handleRemoveBlock(id: string) { setBlocks(prev => prev.filter(b => b.id !== id)) }
 
   function handleUpdateBlockValue(id: string, field: 'currentCost' | 'targetCost', value: string) {
-    const numericValue = parseFloat(value) || 0
-    setBlocks(prev =>
-      prev.map(b => (b.id === id ? { ...b, [field]: numericValue } : b))
-    )
+    setBlocks(prev => prev.map(b => (b.id === id ? { ...b, [field]: parseFloat(value) || 0 } : b)))
   }
 
   function saveBlockName(id: string) {
     if (!editingBlockName.trim()) return
-    setBlocks(prev =>
-      prev.map(b => (b.id === id ? { ...b, name: editingBlockName.trim() } : b))
-    )
-    setEditingBlockId(null)
-    setEditingBlockName('')
+    setBlocks(prev => prev.map(b => (b.id === id ? { ...b, name: editingBlockName.trim() } : b)))
+    setEditingBlockId(null); setEditingBlockName('')
   }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     const activeOrgId = orgId || user?.id
-    if (!activeOrgId) {
-      alert('Sessão expirada. Faça login novamente.')
-      return
-    }
-
+    if (!activeOrgId) return alert('Sessão expirada. Faça login novamente.')
     const price = parseFloat(sellingPrice) || 0
-    if (!productName.trim() || price <= 0) {
-      alert('Informe o nome do produto e um preço de venda válido.')
-      return
-    }
+    if (!productName.trim() || price <= 0) return alert('Informe o nome do produto e um preço de venda válido.')
 
     setSalvando(true)
     const res = await saveCostBreakdown({
       id: selectedId || undefined,
       productName: productName.trim(),
       sellingPrice: price,
-      projectedVolume: liveVol, // Salva o volume real digitado pelo usuário
+      projectedVolume: parseFloat(projectedVolume) || 100, // Salva o volume dinâmico digitado pelo usuário
       blocks,
       organizationId: activeOrgId,
     } as any)
-
     setSalvando(false)
 
     if (res.success && res.data) {
@@ -435,14 +379,12 @@ export default function AiBreakdownPage() {
         setBreakdowns(updated.data)
         loadBreakdownIntoForm(res.data)
       }
-      alert('Breakdown e Ficha Técnica salvos com sucesso!')
-    } else {
-      alert(res.error || 'Erro ao salvar breakdown.')
-    }
+      alert('Breakdown salvo com sucesso!')
+    } else alert(res.error || 'Erro ao salvar breakdown.')
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Deseja excluir esta análise da sua biblioteca?')) return
+    if (!confirm('Deseja excluir esta análise?')) return
     const activeOrgId = orgId || user?.id
     const res = await deleteCostBreakdown(id)
     if (res.success && activeOrgId) {
@@ -454,763 +396,322 @@ export default function AiBreakdownPage() {
     }
   }
 
-  const priceNum = parseFloat(sellingPrice) || 0
-  const curProfit = priceNum - curTotalCost
-  const tarProfit = priceNum - tarTotalCost
-  const gapSaving = curTotalCost - tarTotalCost
-
-  const profitMarginPercent = priceNum > 0 ? ((curProfit / priceNum) * 100) : 0
-  const pctVarCost = curTotalCost > 0 ? ((variableTotalCost / curTotalCost) * 100) : 0
-  const pctFixCost = curTotalCost > 0 ? ((dilutedFixedCostPerUnit / curTotalCost) * 100) : 0
-  const pctTaxCost = curTotalCost > 0 ? ((taxAmountPerUnit / curTotalCost) * 100) : 0
-  
-  const unitContributionMargin = priceNum - variableTotalCost - taxAmountPerUnit
-  const breakEvenUnits = unitContributionMargin > 0 ? Math.ceil(allocatedFixedCost / unitContributionMargin) : 0
-
-  const nomeUsuario = (user?.user_metadata?.nome_completo as string | undefined)?.split(' ')[0]
-    ?? user?.email?.split('@')[0]
-    ?? 'Usuário'
+  const nomeUsuario = (user?.user_metadata?.nome_completo as string | undefined)?.split(' ')[0] ?? user?.email?.split('@')[0] ?? 'Executivo'
 
   if (carregando) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: DARK_BG, color: WHITE }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: TOKENS.bgApp, color: TOKENS.textMain }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 40, height: 40, border: `3px solid rgba(255,255,255,0.1)`, borderTopColor: E, borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 0.8s linear infinite' }} />
-          <p style={{ color: MUTED, fontWeight: 600, fontSize: 14 }}>Carregando DeuAcordo Cost Breakdown...</p>
+          <div style={{ width: 40, height: 40, border: `3px solid ${TOKENS.border}`, borderTopColor: TOKENS.primary, borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 0.8s linear infinite' }} />
+          <p style={{ color: TOKENS.textMuted, fontWeight: 600, fontSize: 14 }}>Carregando Inteligência de Custos...</p>
         </div>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     )
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: SLATE, fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-      
-      {/* ── SIDEBAR LATERAL FIXA DSI ────────────────── */}
-      <aside style={{
-        width: 270,
-        background: DARK_BG,
-        borderRight: `1px solid rgba(255,255,255,0.08)`,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        position: 'fixed',
-        top: 0,
-        bottom: 0,
-        left: 0,
-        zIndex: 100
-      }}>
-        <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 65px)' }}>
-          <div style={{ padding: '1.5rem 1.5rem 1.25rem', borderBottom: `1px solid rgba(255,255,255,0.08)`, flexShrink: 0 }}>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 0; background: ${TOKENS.bgApp}; color: ${TOKENS.textMain}; font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+        
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: ${TOKENS.bgApp}; }
+        ::-webkit-scrollbar-thumb { background: ${TOKENS.border}; border-radius: 4px; }
+
+        .card { background: ${TOKENS.bgCard}; border: 1px solid ${TOKENS.border}; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); }
+        .card-header { padding: 20px 24px; border-bottom: 1px solid ${TOKENS.border}; }
+        .card-body { padding: 24px; }
+        
+        .input-b2b { background: ${TOKENS.bgApp}; border: 1px solid ${TOKENS.border}; color: ${TOKENS.textMain}; border-radius: 8px; padding: 10px 14px; font-size: 13px; font-weight: 500; outline: none; transition: all 0.2s; width: 100%; }
+        .input-b2b:focus { border-color: ${TOKENS.primary}; box-shadow: 0 0 0 1px ${TOKENS.primary}; }
+        
+        .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; padding: 10px 16px; border: none; }
+        .btn-primary { background: ${TOKENS.primary}; color: ${TOKENS.bgApp}; }
+        .btn-primary:hover { background: ${TOKENS.primaryHover}; transform: translateY(-1px); }
+        .btn-outline { background: transparent; border: 1px solid ${TOKENS.border}; color: ${TOKENS.textMain}; }
+        .btn-outline:hover { background: ${TOKENS.bgCardElevated}; border-color: ${TOKENS.borderLight}; }
+        .btn-ghost { background: transparent; color: ${TOKENS.textMuted}; padding: 6px 10px; }
+        .btn-ghost:hover { background: ${TOKENS.bgCardElevated}; color: ${TOKENS.textMain}; }
+        .btn-danger { background: ${TOKENS.dangerLight}; color: ${TOKENS.danger}; border: 1px solid rgba(239, 68, 68, 0.2); }
+
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+        .kpi-card { background: ${TOKENS.bgApp}; border: 1px solid ${TOKENS.border}; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; justify-content: center; position: relative; overflow: hidden; }
+        .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: ${TOKENS.border}; }
+        .kpi-card.positive::before { background: ${TOKENS.primary}; }
+        .kpi-card.negative::before { background: ${TOKENS.danger}; }
+
+        .bom-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        .bom-table th { text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 700; color: ${TOKENS.textMuted}; border-bottom: 1px solid ${TOKENS.border}; text-transform: uppercase; letter-spacing: 0.05em; }
+        .bom-table td { padding: 10px 12px; font-size: 13px; color: ${TOKENS.textMain}; border-bottom: 1px solid ${TOKENS.borderLight}; }
+        .bom-table tr:last-child td { border-bottom: none; }
+        
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
+
+      <div style={{ display: 'flex', minHeight: '100vh' }}>
+        
+        {/* SIDEBAR LATERAL */}
+        <aside style={{ width: 280, background: TOKENS.bgSidebar, borderRight: `1px solid ${TOKENS.border}`, display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, bottom: 0, zIndex: 100 }}>
+          <div style={{ padding: '24px', borderBottom: `1px solid ${TOKENS.border}` }}>
             <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-              <img src="/logo.png" alt="DeuAcordo.com" style={{ height: 32, width: 'auto', objectFit: 'contain' }} />
-              <span style={{ fontWeight: 800, fontSize: 17, color: WHITE, letterSpacing: '-0.02em' }}>
-                DeuAcordo<span style={{ color: E }}>.com</span>
+              <img src="/logo.png" alt="Logo" style={{ height: 28, objectFit: 'contain' }} onError={(e) => e.currentTarget.style.display = 'none'} />
+              <span style={{ fontWeight: 800, fontSize: 18, color: TOKENS.textMain, letterSpacing: '-0.02em' }}>
+                DeuAcordo<span style={{ color: TOKENS.primary }}>.com</span>
               </span>
             </Link>
           </div>
 
-          <div style={{ padding: '1.25rem 1rem', overflowY: 'auto', flex: 1 }}>
-            <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10, paddingLeft: 8 }}>
-              MÓDULOS DEAL DESK
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: '1.75rem' }}>
-              <Link href="/dashboard/empresa" style={{ textDecoration: 'none' }}>
-                <div style={{ width: '100%', padding: '10px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: WHITE, fontSize: 13, fontWeight: 600, transition: 'all 0.2s' }}>
-                  🏢 Área da Empresa
-                </div>
-              </Link>
-              <Link href="/dashboard/closer" style={{ textDecoration: 'none' }}>
-                <div style={{ width: '100%', padding: '10px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: WHITE, fontSize: 13, fontWeight: 600, transition: 'all 0.2s' }}>
-                  🎯 Cockpit do Closer
-                </div>
-              </Link>
-            </div>
-
-            <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10, paddingLeft: 8 }}>
-              PRODUTOS B2B DEUACORDO
-            </p>
-
+          <div style={{ padding: '24px 16px', overflowY: 'auto', flex: 1 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 12, paddingLeft: 8 }}>Finance & Supply</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {ECOSSISTEMA_PRODUTOS.map(p => (
-                <div
-                  key={p.id}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '8px 12px', borderRadius: 8,
-                    background: p.id === 'ai-breakdown' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
-                    border: `1px solid ${p.id === 'ai-breakdown' ? 'rgba(16, 185, 129, 0.3)' : 'transparent'}`,
-                    color: p.id === 'ai-breakdown' ? E : '#94A3B8',
-                    fontSize: 12.5, fontWeight: p.id === 'ai-breakdown' ? 700 : 500, cursor: p.active ? 'pointer' : 'default',
-                    transition: 'all 0.2s'
-                  }}
-                  onClick={() => p.active && router.push(p.href)}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 15 }}>{p.icon}</span>
-                    <span>{p.name}</span>
-                  </div>
-                  {p.active ? (
-                    <span style={{ fontSize: 9, background: E, color: DARK_BG, padding: '2px 6px', borderRadius: 4, fontWeight: 800 }}>ATIVO</span>
-                  ) : (
-                    <span style={{ fontSize: 9, background: 'rgba(255,255,255,0.05)', color: MUTED, padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>EM BREVE</span>
-                  )}
+                <div key={p.id} onClick={() => p.active && router.push(p.href)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: 8, background: p.id === 'ai-breakdown' ? TOKENS.primaryLight : 'transparent', color: p.id === 'ai-breakdown' ? TOKENS.primary : TOKENS.textMuted, fontSize: 13, fontWeight: p.id === 'ai-breakdown' ? 700 : 500, cursor: p.active ? 'pointer' : 'default', transition: 'all 0.2s' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ fontSize: 16 }}>{p.icon}</span><span>{p.name}</span></div>
+                  {p.active ? p.id === 'ai-breakdown' && <div style={{ width: 6, height: 6, borderRadius: '50%', background: TOKENS.primary }} /> : <span style={{ fontSize: 9, background: TOKENS.border, color: TOKENS.textMuted, padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>SOON</span>}
                 </div>
               ))}
             </div>
           </div>
-        </div>
 
-        <div style={{ padding: '1rem 1.25rem', borderTop: `1px solid rgba(255,255,255,0.08)`, background: 'rgba(0,0,0,0.2)', flexShrink: 0, height: 65, display: 'flex', alignItems: 'center' }}>
-          <div>
-            <p style={{ fontSize: 12, fontWeight: 700, color: WHITE, margin: 0 }}>{nomeUsuario}</p>
-            <p style={{ fontSize: 10, color: MUTED, margin: 0 }}>{user?.email}</p>
+          <div style={{ padding: '16px 24px', borderTop: `1px solid ${TOKENS.border}`, background: 'rgba(0,0,0,0.2)' }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: TOKENS.textMain, margin: 0 }}>{nomeUsuario}</p>
+            <p style={{ fontSize: 11, color: TOKENS.textMuted, margin: 0 }}>CFO / Supply Director</p>
           </div>
-        </div>
-      </aside>
+        </aside>
 
-      {/* ── CONTEÚDO PRINCIPAL ────────────────── */}
-      <div style={{ marginLeft: 270, flex: 1, minHeight: '100vh', padding: '2.5rem 3rem' }}>
-        
-        {/* CABEÇALHO DA PÁGINA */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.75rem' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <span style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#047857', fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, border: '1px solid #A7F3D0' }}>
-                INDUSTRIAL COST ENGINEERING & BOM
-              </span>
-            </div>
-            <h1 style={{ fontSize: 26, fontWeight: 800, color: DARK_BG, margin: 0, letterSpacing: '-0.03em' }}>
-              DeuAcordo Breakdown — Construtor de Estrutura de Custos
-            </h1>
-            <p style={{ fontSize: 13, color: MUTED, margin: '4px 0 0' }}>
-              Modelagem técnica precisa de produtos com decomposição de insumos, perdas operacionais, rateio e impostos.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={resetForm}
-            style={{ padding: '10px 18px', background: DARK_BG, border: 'none', borderRadius: 10, color: WHITE, fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(15,23,42,0.15)', transition: 'all 0.2s' }}
-          >
-            + Novo Breakdown
-          </button>
-        </div>
-
-        {/* 📊 DASHBOARD ANALÍTICO EM TEMPO REAL COM OS NOVOS CARDS SOLICITADOS */}
-        <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 16, padding: '1.5rem 2rem', marginBottom: '1.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+        {/* CONTEÚDO PRINCIPAL */}
+        <div style={{ marginLeft: 280, flex: 1, padding: '40px 48px' }}>
+          
+          <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
             <div>
-              <h3 style={{ fontSize: 13, fontWeight: 800, color: DARK_BG, margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                📈 Painel de Viabilidade & Margem Real
-              </h3>
-              <p style={{ fontSize: 12, color: MUTED, margin: '2px 0 0' }}>
-                Indicadores reativos ajustados por volume, tributos e eficiência de processo.
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ background: TOKENS.primaryLight, color: TOKENS.primary, fontSize: 11, fontWeight: 800, padding: '4px 12px', borderRadius: 20, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cost Engineering & Margin Intelligence</span>
+              </div>
+              <h1 style={{ fontSize: 32, fontWeight: 800, margin: 0, letterSpacing: '-0.03em' }}>DeuAcordo Breakdown</h1>
+              <p style={{ fontSize: 14, color: TOKENS.textMuted, margin: '8px 0 0', maxWidth: 600 }}>Decomposição técnica de insumos, custeio de absorção e inteligência de margem em tempo real para tomada de decisão B2B.</p>
             </div>
-            <span style={{ fontSize: 11, fontWeight: 700, color: E, background: E_LIGHT, border: `1px solid ${E_BORDER}`, padding: '4px 12px', borderRadius: 20 }}>
-              ⚡ Reatividade Industrial
-            </span>
-          </div>
-
-          {/* NOVOS CARDS DE KPIS EXECUTIVOS */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-            
-            {/* CARD 1: FATURAMENTO PROJETADO */}
-            <div style={{ background: E_LIGHT, border: `1px solid ${E_BORDER}`, padding: '14px 16px', borderRadius: 12 }}>
-              <span style={{ fontSize: 10, fontWeight: 800, color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.05em' }}>💰 FATURAMENTO PROJETADO</span>
-              <p style={{ fontSize: 20, fontWeight: 800, color: '#047857', margin: '4px 0 0' }}>
-                {brl(liveProjRev)}
-              </p>
-              <span style={{ fontSize: 11, color: '#065F46', fontWeight: 600 }}>{liveVol.toLocaleString('pt-BR')} un/mês</span>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button type="button" onClick={resetForm} className="btn btn-outline">+ Novo Breakdown</button>
+              <button type="button" onClick={handleSave} disabled={salvando} className="btn btn-primary">{salvando ? 'Processando...' : 'Salvar no Portfólio'}</button>
             </div>
+          </header>
 
-            {/* CARD 2: TICKET MÉDIO */}
-            <div style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '14px 16px', borderRadius: 12 }}>
-              <span style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>🏷️ TICKET MÉDIO (PREÇO)</span>
-              <p style={{ fontSize: 20, fontWeight: 800, color: DARK_BG, margin: '4px 0 0' }}>
-                {brl(priceNum)}
-              </p>
-              <span style={{ fontSize: 11, color: MUTED }}>Preço de Venda Unitário</span>
+          {/* DASHBOARD DE KPIs (CORRIGIDO: REATIVIDADE GLOBAL E UNITÁRIA) */}
+          <section className="card" style={{ marginBottom: '32px' }}>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: 15, margin: 0, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: TOKENS.primary }}>⚡</span> Painel de Viabilidade & Margem Real
+              </h2>
+              <span style={{ fontSize: 12, color: TOKENS.textMuted }}>{selectedId ? 'Exibindo Produto Selecionado' : 'Consolidado do Portfólio'}</span>
             </div>
+            <div className="card-body">
+              <div className="kpi-grid">
+                <div className="kpi-card">
+                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Faturamento Proj.</span>
+                  <p className="font-mono" style={{ fontSize: 24, fontWeight: 800, color: TOKENS.textMain, margin: '8px 0 4px' }}>{brl(displayRevenue)}</p>
+                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>{displayVolume.toLocaleString('pt-BR')} un/mês</span>
+                </div>
+                
+                <div className="kpi-card">
+                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Ticket Médio (Preço)</span>
+                  <p className="font-mono" style={{ fontSize: 24, fontWeight: 800, color: TOKENS.textMain, margin: '8px 0 4px' }}>{brl(displayPrice)}</p>
+                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>Preço de Venda Unitário</span>
+                </div>
 
-            {/* CARD 3: MARGEM LÍQUIDA REAL */}
-            <div style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '14px 16px', borderRadius: 12 }}>
-              <span style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>MARGEM LÍQUIDA REAL</span>
-              <p style={{ fontSize: 20, fontWeight: 800, color: profitMarginPercent >= 0 ? E : RED, margin: '4px 0 0' }}>
-                {profitMarginPercent.toFixed(1)}%
-              </p>
-              <span style={{ fontSize: 11, color: MUTED }}>{brl(curProfit)} / unidade</span>
-            </div>
-
-            {/* CARD 4: CUSTO UNITÁRIO TOTAL */}
-            <div style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '14px 16px', borderRadius: 12 }}>
-              <span style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>CUSTO UNITÁRIO TOTAL</span>
-              <p style={{ fontSize: 20, fontWeight: 800, color: DARK_BG, margin: '4px 0 0' }}>
-                {brl(curTotalCost)}
-              </p>
-              <span style={{ fontSize: 11, color: MUTED }}>Var: {brl(variableTotalCost)} | Fix: {brl(dilutedFixedCostPerUnit)}</span>
-            </div>
-
-            {/* CARD 5: BREAK-EVEN */}
-            <div style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '14px 16px', borderRadius: 12 }}>
-              <span style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>BREAK-EVEN POINT</span>
-              <p style={{ fontSize: 20, fontWeight: 800, color: DARK_BG, margin: '4px 0 0' }}>
-                {breakEvenUnits.toLocaleString('pt-BR')} un
-              </p>
-              <span style={{ fontSize: 11, color: MUTED }}>Qtd mín. p/ cobrir fixo</span>
-            </div>
-
-          </div>
-
-          {/* GRÁFICOS VISUAIS DINÂMICOS */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '1.5rem' }}>
-            
-            {/* GRÁFICO 1: DECOMPOSIÇÃO PROPORCIONAL */}
-            <div style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '16px', borderRadius: 12 }}>
-              <h4 style={{ fontSize: 12, fontWeight: 800, color: DARK_BG, margin: '0 0 12px', textTransform: 'uppercase' }}>
-                1. Distribuição de Custos (Variável x Fixo x Tributos)
-              </h4>
-              
-              {curTotalCost > 0 ? (
-                <div>
-                  <div style={{ height: 20, width: '100%', background: '#E2E8F0', borderRadius: 10, overflow: 'hidden', display: 'flex', marginBottom: 12 }}>
-                    <div style={{ width: `${pctVarCost}%`, background: DARK_BG, transition: 'all 0.4s ease' }} title={`Custos Variáveis: ${pctVarCost.toFixed(1)}%`} />
-                    <div style={{ width: `${pctFixCost}%`, background: E, transition: 'all 0.4s ease' }} title={`Custos Fixos Diluídos: ${pctFixCost.toFixed(1)}%`} />
-                    <div style={{ width: `${pctTaxCost}%`, background: '#3B82F6', transition: 'all 0.4s ease' }} title={`Impostos: ${pctTaxCost.toFixed(1)}%`} />
+                <div className={`kpi-card ${profitMarginPercent >= 0 ? 'positive' : 'negative'}`}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Margem Líquida Real</span>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '8px 0 4px' }}>
+                    <p className="font-mono" style={{ fontSize: 24, fontWeight: 800, color: profitMarginPercent >= 0 ? TOKENS.primary : TOKENS.danger, margin: 0 }}>{pct(profitMarginPercent)}</p>
                   </div>
-                  
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, flexWrap: 'wrap', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ width: 10, height: 10, background: DARK_BG, borderRadius: '50%' }} />
-                      <span style={{ color: MUTED, fontWeight: 600 }}>Variáveis: <strong>{pctVarCost.toFixed(1)}%</strong></span>
+                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>{brl(curProfit)} / unidade</span>
+                </div>
+
+                <div className="kpi-card">
+                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Custo Unit. Total</span>
+                  <p className="font-mono" style={{ fontSize: 24, fontWeight: 800, color: TOKENS.textMain, margin: '8px 0 4px' }}>{brl(displayUnitCost)}</p>
+                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>Var: {brl(variableTotalCost)} | Fix: {brl(dilutedFixedCostPerUnit)}</span>
+                </div>
+
+                <div className="kpi-card">
+                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Break-Even Point</span>
+                  <p className="font-mono" style={{ fontSize: 24, fontWeight: 800, color: TOKENS.textMain, margin: '8px 0 4px' }}>{breakEvenUnits.toLocaleString('pt-BR')} un</p>
+                  <span style={{ fontSize: 12, color: TOKENS.textMuted }}>Qtd mín. p/ cobrir fixo</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* FORMULÁRIOS DE ENTRADA */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '32px' }}>
+            
+            {/* PARÂMETROS COMERCIAIS */}
+            <section className="card">
+              <div className="card-header"><h2 style={{ fontSize: 15, margin: 0, fontWeight: 700 }}>1. Parâmetros Comerciais & Tributários</h2></div>
+              <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: TOKENS.textMuted, marginBottom: 8 }}>Nome do Produto / SKU *</label>
+                  <input type="text" className="input-b2b" placeholder="Ex: Peça Mecânica CNC 01" value={productName} onChange={e => setProductName(e.target.value)} required />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: TOKENS.textMuted, marginBottom: 8 }}>Preço de Venda (R$)</label>
+                  <input type="number" step="0.01" className="input-b2b" placeholder="0.00" value={sellingPrice} onChange={e => handleSellingPriceChange(e.target.value)} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: TOKENS.textMuted, marginBottom: 8 }}>Markup Aplicado (%)</label>
+                  <input type="number" step="0.1" className="input-b2b" style={{ borderColor: TOKENS.primary, color: TOKENS.primary }} value={markupPercent} onChange={e => handleMarkupChange(e.target.value)} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: TOKENS.textMuted, marginBottom: 8 }}>Vendas/Mês Projetada (un/mês)</label>
+                  {/* CORRIGIDO: Input totalmente dinâmico sem travar em 100 */}
+                  <input type="number" min="1" className="input-b2b" value={projectedVolume} onChange={e => setProjectedVolume(e.target.value)} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: TOKENS.textMuted, marginBottom: 8 }}>Impostos Faturados (%)</label>
+                  <input type="number" step="0.1" className="input-b2b" value={taxRateOnSales} onChange={e => setTaxRateOnSales(e.target.value)} />
+                </div>
+              </div>
+            </section>
+
+            {/* CUSTOS FIXOS */}
+            <section className="card">
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 style={{ fontSize: 15, margin: 0, fontWeight: 700 }}>2. Estrutura de Custos Fixos (OPEX)</h2>
+                <span style={{ fontSize: 12, background: TOKENS.bgCardElevated, padding: '4px 10px', borderRadius: 12, fontWeight: 700 }}>Total Fixo: <span style={{ color: TOKENS.primary }}>{brl(totalFixedCostsGlobal)}</span></span>
+              </div>
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input type="text" className="input-b2b" placeholder="Descrição (Ex: Aluguel Galpão)" value={newFcName} onChange={e => setNewFcName(e.target.value)} />
+                  <input type="number" className="input-b2b" style={{ width: 120 }} placeholder="R$ Mensal" value={newFcValue} onChange={e => setNewFcValue(e.target.value)} />
+                  <button type="button" className="btn btn-outline" onClick={handleAddFixedCost}>+ Add</button>
+                </div>
+                <div style={{ overflowY: 'auto', maxHeight: '180px', background: TOKENS.bgApp, borderRadius: 8, border: `1px solid ${TOKENS.border}` }}>
+                  {fixedCosts.map(fc => (
+                    <div key={fc.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 16px', borderBottom: `1px solid ${TOKENS.border}` }}>
+                      <span style={{ fontSize: 13 }}>{fc.name}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span className="font-mono" style={{ fontSize: 13, color: TOKENS.textMuted }}>{brl(fc.value)}</span>
+                        <button onClick={() => handleRemoveFixedCost(fc.id)} className="btn-ghost" style={{ color: TOKENS.danger, padding: 0 }}>✕</button>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ width: 10, height: 10, background: E, borderRadius: '50%' }} />
-                      <span style={{ color: MUTED, fontWeight: 600 }}>Fixos: <strong>{pctFixCost.toFixed(1)}%</strong></span>
+                  ))}
+                </div>
+              </div>
+            </section>
+          </div>
+
+          {/* ESTRUTURA DE CUSTOS (BOM) */}
+          <section className="card" style={{ marginBottom: '32px' }}>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontSize: 15, margin: 0, fontWeight: 700 }}>3. Engenharia de Custos (Cost Breakdown & BOM)</h2>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select value={selectedRmId} onChange={(e) => { if (e.target.value) handleAddBlock(e.target.value); e.target.value = ''; }} className="input-b2b" style={{ width: 'auto' }}>
+                  <option value="">+ Bloco Padrão</option>
+                  {BLOCOS_SUGERIDOS.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+                <input type="text" className="input-b2b" placeholder="Novo bloco..." value={customCategory} onChange={e => setCustomCategory(e.target.value)} style={{ width: 200 }} />
+                <button type="button" onClick={() => handleAddBlock(customCategory)} className="btn btn-outline">Criar</button>
+              </div>
+            </div>
+
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              {blocks.map(b => (
+                <div key={b.id} style={{ border: `1px solid ${TOKENS.borderLight}`, borderRadius: 12, overflow: 'hidden' }}>
+                  <div style={{ background: TOKENS.bgCardElevated, padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ fontSize: 14, margin: 0, fontWeight: 700 }}>{b.name}</h3>
+                    <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                      <span className="font-mono" style={{ fontSize: 14, fontWeight: 800 }}>Total: {brl(b.currentCost || 0)}</span>
+                      <button onClick={() => handleRemoveBlock(b.id)} className="btn-ghost" style={{ color: TOKENS.danger }}>✕</button>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ width: 10, height: 10, background: '#3B82F6', borderRadius: '50%' }} />
-                      <span style={{ color: MUTED, fontWeight: 600 }}>Impostos: <strong>{pctTaxCost.toFixed(1)}%</strong></span>
-                    </div>
+                  </div>
+
+                  <div style={{ padding: '16px 20px', background: TOKENS.bgApp }}>
+                    <table className="bom-table">
+                      <thead>
+                        <tr>
+                          <th>Insumo</th>
+                          <th style={{ width: '15%' }}>Qtd</th>
+                          <th style={{ width: '15%' }}>Refugo (%)</th>
+                          <th style={{ width: '20%', textAlign: 'right' }}>Custo Total</th>
+                          <th style={{ width: '5%' }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {b.subItems?.map(sub => (
+                          <tr key={sub.id}>
+                            <td>{sub.name}</td>
+                            <td className="font-mono">{sub.quantity}</td>
+                            <td className="font-mono">{sub.scrapRate || 0}%</td>
+                            <td className="font-mono" style={{ textAlign: 'right', fontWeight: 600 }}>{brl(sub.totalCost)}</td>
+                            <td style={{ textAlign: 'right' }}><button onClick={() => handleRemoveSubItem(b.id, sub.id)} className="btn-ghost" style={{ color: TOKENS.danger }}>✕</button></td>
+                          </tr>
+                        ))}
+                        <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
+                          <td>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <select value={selectedRmId} onChange={e => setSelectedRmId(e.target.value)} className="input-b2b" style={{ padding: '6px' }}>
+                                <option value="">+ Do banco...</option>
+                                {rawMaterials.map(rm => <option key={rm.id} value={rm.id}>{rm.name} ({brl(rm.price)}/{rm.unit})</option>)}
+                              </select>
+                              <input type="text" placeholder="Nome avulso" value={subName} onChange={e => { setSubName(e.target.value); setSelectedRmId('') }} className="input-b2b" style={{ padding: '6px' }} />
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: 4 }}>
+                              <input type="number" step="0.001" value={subQty} onChange={e => setSubQty(e.target.value)} className="input-b2b" style={{ padding: '6px' }} />
+                              <select value={subUnit} onChange={e => setSubUnit(e.target.value)} className="input-b2b" style={{ padding: '6px' }}>
+                                {UNIDADES_MEDIDA.map(u => <option key={u.code} value={u.code}>{u.code}</option>)}
+                              </select>
+                            </div>
+                          </td>
+                          <td><input type="number" step="0.1" value={subScrapRate} onChange={e => setSubScrapRate(e.target.value)} className="input-b2b" style={{ padding: '6px' }} /></td>
+                          <td className="font-mono" style={{ textAlign: 'right', color: TOKENS.primary, fontWeight: 700 }}>{brl(calculatedSubCost)}</td>
+                          <td style={{ textAlign: 'right' }}><button onClick={() => handleAddSubItem(b.id)} className="btn btn-outline" style={{ padding: '4px 8px', fontSize: 11 }}>Add</button></td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                 </div>
+              ))}
+            </div>
+          </section>
+
+          {/* PORTFÓLIO DE PRODUTOS */}
+          <section className="card">
+            <div className="card-header"><h2 style={{ fontSize: 15, margin: 0, fontWeight: 700 }}>📚 Portfólio de Produtos / Fichas Gravadas</h2></div>
+            <div className="card-body">
+              {breakdowns.length === 0 ? (
+                <p style={{ fontSize: 13, color: TOKENS.textMuted, textAlign: 'center', margin: '40px 0' }}>Nenhum produto cadastrado no portfólio.</p>
               ) : (
-                <span style={{ fontSize: 12, color: MUTED }}>Monte a estrutura abaixo para ver o gráfico.</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {breakdowns.map(b => (
+                    <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: selectedId === b.id ? TOKENS.bgCardElevated : TOKENS.bgApp, border: `1px solid ${selectedId === b.id ? TOKENS.primary : TOKENS.border}`, borderRadius: 12, transition: 'all 0.2s' }}>
+                      <div>
+                        <p style={{ fontSize: 14, fontWeight: 700, margin: '0 0 6px' }}>{b.productName} <span style={{ fontSize: 12, color: TOKENS.textMuted, fontWeight: 500 }}>({b.projectedVolume || 100} un/mês)</span></p>
+                        <div style={{ display: 'flex', gap: 16, fontSize: 12, color: TOKENS.textMuted }} className="font-mono">
+                          <span>Preço: <strong style={{ color: TOKENS.textMain }}>{brl(b.sellingPrice)}</strong></span>
+                          <span>Fat. Base: <strong style={{ color: TOKENS.primary }}>{brl((b.sellingPrice || 0) * (b.projectedVolume || 100))}</strong></span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => loadBreakdownIntoForm(b)} className="btn btn-outline" style={{ padding: '6px 12px' }}>Abrir / Editar</button>
+                        <button onClick={() => handleDelete(b.id)} className="btn-danger" style={{ padding: '6px 10px', borderRadius: 8, cursor: 'pointer' }}>🗑️</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
+          </section>
 
-            {/* GRÁFICO 2: DISTRIBUIÇÃO RELATIVA DOS BLOCOS */}
-            <div style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '16px', borderRadius: 12 }}>
-              <h4 style={{ fontSize: 12, fontWeight: 800, color: DARK_BG, margin: '0 0 12px', textTransform: 'uppercase' }}>
-                2. Peso Financeiro dos Blocos Industriais
-              </h4>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {blocks.map(b => {
-                  const blockCost = b.subItems && b.subItems.length > 0
-                    ? b.subItems.reduce((acc, s) => acc + s.totalCost, 0)
-                    : (b.currentCost || 0)
-                  const blockPct = curTotalCost > 0 ? (blockCost / curTotalCost) * 100 : 0
-
-                  return (
-                    <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11 }}>
-                      <span style={{ width: 150, fontWeight: 700, color: DARK_BG, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.name}</span>
-                      <div style={{ flex: 1, height: 10, background: '#E2E8F0', borderRadius: 6, overflow: 'hidden' }}>
-                        <div style={{ width: `${blockPct}%`, height: '100%', background: E, borderRadius: 6, transition: 'all 0.4s ease' }} />
-                      </div>
-                      <span style={{ width: 90, textAlign: 'right', fontWeight: 700, color: DARK_BG }}>{brl(blockCost)} ({blockPct.toFixed(1)}%)</span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-          </div>
         </div>
-
-        {/* 📦 ÁREA 1: ESTOQUE DE MATÉRIAS-PRIMAS E INSUMOS */}
-        <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 16, padding: '1.5rem 2rem', marginBottom: '1.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-            <div>
-              <h3 style={{ fontSize: 13, fontWeight: 800, color: DARK_BG, margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                1. Catálogo / Banco de Insumos & Mão de Obra
-              </h3>
-              <p style={{ fontSize: 12, color: MUTED, margin: '2px 0 0' }}>
-                Cadastre insumos base e o valor do custo por hora ou unidade para reaproveitamento nos blocos.
-              </p>
-            </div>
-            <span style={{ background: SLATE, color: DARK_BG, border: `1px solid ${BORDER}`, padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>
-              {rawMaterials.length} Insumos Cadastrados
-            </span>
-          </div>
-
-          <div style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '12px 16px', borderRadius: 12, marginBottom: '1.25rem', display: 'flex', gap: 10, alignItems: 'center' }}>
-            <input
-              type="text" placeholder="Insumo ou Cargo (ex: Aço Inox, Operador CNC)" value={newRmName} onChange={e => setNewRmName(e.target.value)}
-              style={{ flex: 1.5, padding: '9px 12px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12.5, color: DARK_BG, outline: 'none' }}
-            />
-            <input
-              type="number" step="0.01" placeholder="Custo (R$)" value={newRmPrice} onChange={e => setNewRmPrice(e.target.value)}
-              style={{ width: 110, padding: '9px 12px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12.5, color: DARK_BG, outline: 'none' }}
-            />
-            <select
-              value={newRmUnit} onChange={e => setNewRmUnit(e.target.value)}
-              style={{ width: 150, padding: '9px 12px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12.5, color: DARK_BG }}
-            >
-              {UNIDADES_MEDIDA.map(u => (
-                <option key={u.code} value={u.code}>{u.label}</option>
-              ))}
-            </select>
-            <button
-              type="button" onClick={handleAddRawMaterial}
-              style={{ padding: '9px 18px', background: E, color: WHITE, border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}
-            >
-              + Salvar
-            </button>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
-            {rawMaterials.map(rm => (
-              <div key={rm.id} style={{ background: SLATE, border: `1px solid ${BORDER}`, padding: '8px 12px', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: DARK_BG }}>{rm.name}</span>
-                  <span style={{ fontSize: 11, color: MUTED }}>{brl(rm.price)} / {rm.unit}</span>
-                </div>
-                <button type="button" onClick={() => handleRemoveRawMaterial(rm.id)} style={{ background: 'none', border: 'none', color: RED, cursor: 'pointer', fontSize: 12 }}>✕</button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* 🏢 ÁREA 2: CUSTOS FIXOS */}
-        <div style={{ background: `linear-gradient(135deg, ${DARK_BG} 0%, ${DARK_CARD} 100%)`, borderRadius: 16, padding: '1.5rem 2rem', marginBottom: '1.75rem', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-            <div>
-              <h3 style={{ fontSize: 13, fontWeight: 800, color: WHITE, margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                2. Custos Fixos Mensais da Operação
-              </h3>
-              <p style={{ fontSize: 12, color: '#94A3B8', margin: '2px 0 0' }}>
-                Diluição proporcional automática de despesas administrativas e operacionais.
-              </p>
-            </div>
-            <div style={{ background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.15)', color: WHITE, padding: '6px 14px', borderRadius: 30, fontSize: 12, fontWeight: 700 }}>
-              Total Fixo: <span style={{ color: E, marginLeft: 6, fontSize: 14 }}>{brl(totalFixedCostsGlobal)}</span>
-            </div>
-          </div>
-          
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '2rem' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 110, overflowY: 'auto' }}>
-              {fixedCosts.map(fc => (
-                <div key={fc.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.06)', padding: '7px 12px', borderRadius: 8 }}>
-                  <span style={{ fontSize: 12.5, color: WHITE, fontWeight: 600 }}>{fc.name}</span>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <span style={{ fontSize: 13, color: E, fontWeight: 700 }}>{brl(fc.value)}</span>
-                    <button type="button" onClick={() => handleRemoveFixedCost(fc.id)} style={{ background: 'none', border: 'none', color: RED, cursor: 'pointer', fontSize: 12 }}>✕</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '10px 14px', borderRadius: 12, border: '1px dashed rgba(255,255,255,0.15)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <span style={{ display: 'block', fontSize: 10, fontWeight: 800, color: MUTED, marginBottom: 6, textTransform: 'uppercase' }}>+ Custo Fixo Operacional</span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  type="text" placeholder="Ex: Aluguel Galpão" value={newFcName} onChange={e => setNewFcName(e.target.value)}
-                  style={{ flex: 1, padding: '7px 10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: WHITE, fontSize: 12, outline: 'none' }}
-                />
-                <input
-                  type="number" step="0.01" placeholder="R$ 0,00" value={newFcValue} onChange={e => setNewFcValue(e.target.value)}
-                  style={{ width: 100, padding: '7px 10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: WHITE, fontSize: 12, outline: 'none' }}
-                />
-                <button type="button" onClick={handleAddFixedCost} style={{ background: E, color: DARK_BG, border: 'none', padding: '0 12px', borderRadius: 6, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>+ Add</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ÁREA 3: FICHA TÉCNICA E PARÂMETROS COMERCIAIS */}
-        <form onSubmit={handleSave}>
-          <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 16, padding: '1.5rem 2rem', marginBottom: '1.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-            <h3 style={{ fontSize: 13, fontWeight: 800, color: DARK_BG, margin: '0 0 1.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              3. Parâmetros do Produto & Tributação
-            </h3>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr', gap: '1.25rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: DARK_BG, marginBottom: 6 }}>NOME DO PRODUTO *</label>
-                <input
-                  type="text" required placeholder="Ex: Peça Mecânica CNC 01"
-                  value={productName} onChange={e => setProductName(e.target.value)}
-                  style={{ width: '100%', padding: '11px 14px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 10, fontSize: 13, color: DARK_BG, fontWeight: 600, outline: 'none' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: DARK_BG, marginBottom: 6 }}>VENDAS/MÊS (QTD)</label>
-                <input
-                  type="number" required placeholder="Ex: 100"
-                  value={projectedVolume} onChange={e => setProjectedVolume(e.target.value)}
-                  style={{ width: '100%', padding: '11px 14px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 10, fontSize: 13, color: DARK_BG, fontWeight: 600, outline: 'none' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: DARK_BG, marginBottom: 6 }}>IMPOSTOS FATURADOS (%)</label>
-                <input
-                  type="number" step="0.1" placeholder="Ex: 18"
-                  value={taxRateOnSales} onChange={e => setTaxRateOnSales(e.target.value)}
-                  style={{ width: '100%', padding: '11px 14px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 10, fontSize: 13, color: DARK_BG, fontWeight: 600, outline: 'none' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: DARK_BG, marginBottom: 6 }}>PREÇO VENDA (R$)</label>
-                <input
-                  type="number" step="0.01" placeholder="0.00"
-                  value={sellingPrice} onChange={e => handleSellingPriceChange(e.target.value)}
-                  style={{ width: '100%', padding: '11px 14px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 10, fontSize: 13, color: DARK_BG, fontWeight: 700, outline: 'none' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 800, color: E, marginBottom: 6 }}>MARKUP REAL (%)</label>
-                <input
-                  type="number" step="0.1" placeholder="Ex: 50"
-                  value={markupPercent} onChange={e => handleMarkupChange(e.target.value)}
-                  style={{ width: '100%', padding: '11px 14px', background: E_LIGHT, border: `1px solid ${E_BORDER}`, borderRadius: 10, fontSize: 13, fontWeight: 800, color: '#065F46', outline: 'none' }}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* 🧩 ÁREA 4: DETALHAMENTO DE BLOCOS DE CUSTO */}
-          <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 16, padding: '1.5rem 2rem', marginBottom: '1.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-            <h3 style={{ fontSize: 13, fontWeight: 800, color: DARK_BG, margin: '0 0 1.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              4. Montagem do Cost Breakdown & Lista de Materiais (BOM)
-            </h3>
-            
-            <div style={{ background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', gap: 14, alignItems: 'flex-end' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: DARK_BG, marginBottom: 6 }}>INCLUIR BLOCO INDUSTRIAL PADRÃO</label>
-                <select
-                  value={selectedPreset}
-                  onChange={e => {
-                    setSelectedPreset(e.target.value)
-                    if (e.target.value) handleAddBlock(e.target.value)
-                  }}
-                  style={{ width: '100%', padding: '10px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 13, color: DARK_BG, fontWeight: 500 }}
-                >
-                  <option value="">-- Selecionar Categoria de Custo --</option>
-                  {BLOCOS_SUGERIDOS.map(item => (
-                    <option key={item} value={item}>{item}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ flex: 1.5, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: DARK_BG, marginBottom: 6 }}>OU CRIAR NOVO BLOCO CUSTOMIZADO</label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Tratamento Térmico, Testes Laboratoriais..."
-                    value={customCategory}
-                    onChange={e => setCustomCategory(e.target.value)}
-                    style={{ width: '100%', padding: '10px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 13, color: DARK_BG }}
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleAddBlock(customCategory)}
-                  disabled={!customCategory.trim()}
-                  style={{ padding: '10px 18px', background: customCategory.trim() ? DARK_BG : BORDER, color: WHITE, border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
-                >
-                  + Adicionar
-                </button>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.75rem' }}>
-              
-              {/* CENÁRIO ATUAL */}
-              <div style={{ background: SLATE, borderRadius: 14, padding: '1.5rem', border: `1px solid ${BORDER}` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-                  <h4 style={{ fontSize: 13, fontWeight: 800, color: DARK_BG, margin: 0 }}>📊 Estrutura de Custos Atual (Real)</h4>
-                  <span style={{ fontSize: 10, fontWeight: 800, background: WHITE, border: `1px solid ${BORDER}`, padding: '3px 10px', borderRadius: 20, color: MUTED }}>CENÁRIO REAL</span>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {blocks.map(b => (
-                    <div key={b.id} style={{ background: WHITE, padding: '14px', borderRadius: 10, border: `1px solid ${BORDER}`, boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                        {editingBlockId === b.id ? (
-                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                            <input
-                              type="text" value={editingBlockName} onChange={e => setEditingBlockName(e.target.value)}
-                              style={{ padding: '4px 8px', fontSize: 12, border: `1px solid ${BORDER}`, borderRadius: 6 }}
-                            />
-                            <button type="button" onClick={() => saveBlockName(b.id)} style={{ background: E, color: WHITE, border: 'none', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>OK</button>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: 12.5, fontWeight: 800, color: DARK_BG }}>{b.name}</span>
-                            <button type="button" onClick={() => { setEditingBlockId(b.id); setEditingBlockName(b.name) }} style={{ background: 'none', border: 'none', fontSize: 11, color: MUTED, cursor: 'pointer' }}>✏️</button>
-                          </div>
-                        )}
-
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button
-                            type="button" onClick={() => setActiveBlockForSub(activeBlockForSub === b.id ? null : b.id)}
-                            style={{ background: E_LIGHT, border: `1px solid ${E_BORDER}`, color: '#065F46', fontSize: 10, fontWeight: 800, borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
-                          >
-                            + Insumo / Componente
-                          </button>
-                          <button type="button" onClick={() => handleRemoveBlock(b.id)} style={{ background: 'none', border: 'none', color: RED, fontSize: 12, cursor: 'pointer' }}>✕</button>
-                        </div>
-                      </div>
-
-                      {b.subItems && b.subItems.length > 0 && (
-                        <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
-                          {b.subItems.map(sub => (
-                            <div key={sub.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: SLATE, padding: '7px 12px', borderRadius: 6, fontSize: 11.5 }}>
-                              <span><strong>{sub.name}</strong></span>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <span style={{ fontWeight: 800, color: DARK_BG }}>{brl(sub.totalCost)}</span>
-                                <button type="button" onClick={() => handleRemoveSubItem(b.id, sub.id)} style={{ color: RED, border: 'none', background: 'none', cursor: 'pointer', fontWeight: 700 }}>✕</button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {activeBlockForSub === b.id && (
-                        <div style={{ background: E_LIGHT, border: `1px solid ${E_BORDER}`, borderRadius: 8, padding: '12px', marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          <span style={{ fontSize: 10, fontWeight: 800, color: '#065F46', textTransform: 'uppercase' }}>Selecione Insumo Cadastrado ou Digite Novo</span>
-                          
-                          <select
-                            value={selectedRmId}
-                            onChange={e => setSelectedRmId(e.target.value)}
-                            style={{ padding: '8px', fontSize: 12, border: `1px solid ${BORDER}`, borderRadius: 6, background: WHITE, color: DARK_BG, fontWeight: 600 }}
-                          >
-                            <option value="">-- Escolha da lista de matérias-primas --</option>
-                            {rawMaterials.map(rm => (
-                              <option key={rm.id} value={rm.id}>{rm.name} ({brl(rm.price)}/{rm.unit})</option>
-                            ))}
-                          </select>
-
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 100px 80px', gap: 6, alignItems: 'center' }}>
-                            <input
-                              type="text" placeholder="Nome do insumo livre" value={subName} onChange={e => { setSubName(e.target.value); setSelectedRmId('') }}
-                              style={{ padding: '7px', fontSize: 11.5, border: `1px solid ${BORDER}`, borderRadius: 6, background: WHITE }}
-                            />
-                            <input
-                              type="number" step="0.001" placeholder="Qtd" value={subQty} onChange={e => setSubQty(e.target.value)}
-                              style={{ padding: '7px', fontSize: 11.5, border: `1px solid ${BORDER}`, borderRadius: 6, background: WHITE }}
-                            />
-                            <select
-                              value={subUnit} onChange={e => setSubUnit(e.target.value)}
-                              style={{ padding: '7px', fontSize: 11.5, border: `1px solid ${BORDER}`, borderRadius: 6, background: WHITE }}
-                            >
-                              <option value="g">grama (g)</option>
-                              <option value="kg">quilo (kg)</option>
-                              <option value="un">unidade (un)</option>
-                              <option value="ml">mililitro (ml)</option>
-                              <option value="L">litro (L)</option>
-                              <option value="h">hora (h)</option>
-                            </select>
-                            <input
-                              type="number" step="0.1" placeholder="Perda %" value={subScrapRate} onChange={e => setSubScrapRate(e.target.value)}
-                              title="Percentual de Perda / Refugo no Processo"
-                              style={{ padding: '7px', fontSize: 11.5, border: `1px solid ${BORDER}`, borderRadius: 6, background: WHITE }}
-                            />
-                          </div>
-
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                            <span style={{ fontSize: 11.5, fontWeight: 700, color: '#065F46' }}>
-                              Custo Final c/ Refugo: <strong style={{ fontSize: 13, color: DARK_BG }}>{brl(calculatedSubCost)}</strong>
-                            </span>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button type="button" onClick={() => setActiveBlockForSub(null)} style={{ padding: '4px 10px', background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: 10, cursor: 'pointer' }}>Cancelar</button>
-                              <button type="button" onClick={() => handleAddSubItem(b.id)} style={{ padding: '4px 12px', background: E, color: WHITE, border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>Confirmar Insumo</button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {(!b.subItems || b.subItems.length === 0) && (
-                        <input
-                          type="number" step="0.01" placeholder="0.00"
-                          value={b.currentCost || ''}
-                          onChange={e => handleUpdateBlockValue(b.id, 'currentCost', e.target.value)}
-                          style={{ width: '100%', padding: '8px 10px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: 12, color: DARK_BG, fontWeight: 600 }}
-                        />
-                      )}
-                    </div>
-                  ))}
-
-                  <div style={{ background: WHITE, padding: '12px 14px', borderRadius: 10, border: '1px dashed #CBD5E1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: DARK_BG }}>🏢 Custo Fixo Diluído / un</span>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: DARK_BG }}>+ {brl(dilutedFixedCostPerUnit)}</span>
-                  </div>
-
-                  <div style={{ background: WHITE, padding: '12px 14px', borderRadius: 10, border: '1px dashed #CBD5E1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: DARK_BG }}>🏛️ Impostos Faturados ({taxPct}%)</span>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: DARK_BG }}>+ {brl(taxAmountPerUnit)}</span>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: `1px solid ${BORDER}`, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-                  <div>
-                    <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, margin: 0 }}>CUSTO UNIT. TOTAL</p>
-                    <p style={{ fontSize: 15, fontWeight: 800, color: DARK_BG, margin: '3px 0 0' }}>{brl(curTotalCost)}</p>
-                  </div>
-                  <div>
-                    <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, margin: 0 }}>LUCRO LÍQUIDO</p>
-                    <p style={{ fontSize: 15, fontWeight: 800, color: curProfit >= 0 ? E : RED, margin: '3px 0 0' }}>{brl(curProfit)}</p>
-                  </div>
-                  <div>
-                    <p style={{ fontSize: 10, fontWeight: 800, color: MUTED, margin: 0 }}>MARKUP REAL</p>
-                    <p style={{ fontSize: 15, fontWeight: 800, color: DARK_BG, margin: '3px 0 0' }}>{markupPercent}%</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* CENÁRIO TARGET */}
-              <div style={{ background: E_LIGHT, borderRadius: 14, padding: '1.5rem', border: `1.5px solid ${E}` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-                  <h4 style={{ fontSize: 13, fontWeight: 800, color: '#065F46', margin: 0 }}>🎯 Metas de Should-Cost (Target)</h4>
-                  <span style={{ fontSize: 10, fontWeight: 800, background: WHITE, padding: '3px 10px', borderRadius: 20, color: '#047857' }}>METAS DE SAVING</span>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {blocks.map(b => (
-                    <div key={b.id} style={{ background: WHITE, padding: '14px', borderRadius: 10, border: '1px solid #A7F3D0' }}>
-                      <span style={{ display: 'block', fontSize: 11, fontWeight: 800, color: '#065F46', marginBottom: 6 }}>TARGET {b.name.toUpperCase()}</span>
-                      <input
-                        type="number" step="0.01" placeholder="0.00"
-                        value={b.targetCost || ''}
-                        onChange={e => handleUpdateBlockValue(b.id, 'targetCost', e.target.value)}
-                        style={{ width: '100%', padding: '8px 10px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: 12, color: DARK_BG, fontWeight: 600 }}
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid #A7F3D0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <div>
-                    <p style={{ fontSize: 10, fontWeight: 800, color: '#047857', margin: 0 }}>CUSTO ALVO TOTAL</p>
-                    <p style={{ fontSize: 15, fontWeight: 800, color: E, margin: '3px 0 0' }}>{brl(tarTotalCost)}</p>
-                  </div>
-                  <div>
-                    <p style={{ fontSize: 10, fontWeight: 800, color: '#047857', margin: 0 }}>LUCRO TARGET</p>
-                    <p style={{ fontSize: 15, fontWeight: 800, color: tarProfit >= 0 ? E : RED, margin: '3px 0 0' }}>{brl(tarProfit)}</p>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          </div>
-
-          {/* BANNER DE SAVING */}
-          <div style={{ background: E_LIGHT, border: `1.5px solid ${E_BORDER}`, borderRadius: 16, padding: '1.25rem 2rem', marginBottom: '1.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <p style={{ fontSize: 11, fontWeight: 800, color: '#065F46', letterSpacing: '0.07em', textTransform: 'uppercase', margin: 0 }}>
-                POTENCIAL DE SAVING UNITÁRIO (GAP DE CUSTO)
-              </p>
-              <p style={{ fontSize: 13, color: '#047857', margin: '3px 0 0' }}>
-                Oportunidade de redução negociável entre o cenário atual e a meta target.
-              </p>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: 26, fontWeight: 800, color: gapSaving > 0 ? E : MUTED, margin: 0 }}>
-                {gapSaving > 0 ? brl(gapSaving) : 'R$ 0,00'}
-              </p>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3rem' }}>
-            {selectedId ? (
-              <button
-                type="button" onClick={() => handleDelete(selectedId)}
-                style={{ padding: '12px 20px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, color: RED, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
-              >
-                Excluir da Biblioteca
-              </button>
-            ) : <div />}
-
-            <button
-              type="submit" disabled={salvando}
-              style={{ padding: '14px 32px', background: E, border: 'none', borderRadius: 10, color: DARK_BG, fontSize: 14, fontWeight: 800, cursor: salvando ? 'wait' : 'pointer', boxShadow: '0 4px 16px rgba(16,185,129,0.3)' }}
-            >
-              {salvando ? 'Salvando...' : 'Salvar Ficha Técnica na Biblioteca'}
-            </button>
-          </div>
-        </form>
-
-        {/* ÁREA 5: PORTFÓLIO DE PRODUTOS */}
-        <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 16, padding: '1.75rem 2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <h3 style={{ fontSize: 14, fontWeight: 800, color: DARK_BG, margin: '0 0 1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            5. Portfólio de Produtos & Fichas Gravadas
-          </h3>
-
-          {breakdowns.length === 0 ? (
-            <div style={{ padding: '2.5rem', textAlign: 'center', background: SLATE, borderRadius: 12, border: `1.5px dashed ${BORDER}` }}>
-              <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>Nenhum produto gravado na biblioteca até o momento.</p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {breakdowns.map(b => {
-                const isSelected = selectedId === b.id
-                const bVol = b.projectedVolume ? parseFloat(b.projectedVolume) : 100
-                const bRev = (parseFloat(b.sellingPrice) || 0) * bVol
-                
-                return (
-                  <div
-                    key={b.id}
-                    style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '14px 18px', borderRadius: 12,
-                      background: isSelected ? E_LIGHT : SLATE,
-                      border: `1.5px solid ${isSelected ? E : BORDER}`,
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    <div>
-                      <p style={{ fontSize: 14, fontWeight: 800, color: DARK_BG, margin: '0 0 4px' }}>
-                        {b.productName} <span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}>({bVol} un/mês)</span>
-                      </p>
-                      <div style={{ display: 'flex', gap: 18, fontSize: 12, color: MUTED }}>
-                        <span>Preço Venda: <strong style={{ color: DARK_BG }}>{brl(b.sellingPrice)}</strong></span>
-                        <span>Faturamento Proj.: <strong style={{ color: DARK_BG }}>{brl(bRev)}</strong></span>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                      <button
-                        type="button"
-                        onClick={() => loadBreakdownIntoForm(b)}
-                        style={{ padding: '6px 14px', background: DARK_BG, color: WHITE, border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-                      >
-                        ✏️ Editar Ficha
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(b.id)}
-                        style={{ background: 'none', border: 'none', color: RED, fontSize: 14, cursor: 'pointer', padding: '4px 8px' }}
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
       </div>
-    </div>
+    </>
   )
 }
