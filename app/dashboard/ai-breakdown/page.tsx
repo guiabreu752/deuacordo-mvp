@@ -48,6 +48,12 @@ const BLOCOS_SUGERIDOS = [
   'Impostos e Taxas',
 ]
 
+interface FixedCost {
+  id: string
+  name: string
+  value: number
+}
+
 export default function AiBreakdownPage() {
   const router = useRouter()
   const [user, setUser]               = useState<User | null>(null)
@@ -57,9 +63,15 @@ export default function AiBreakdownPage() {
   const [salvando, setSalvando]       = useState(false)
   const [selectedId, setSelectedId]   = useState<string | null>(null)
 
-  // Ficha de Produto
+  // 1. Custos Fixos Globais da Empresa
+  const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
+  const [newFcName, setNewFcName] = useState('')
+  const [newFcValue, setNewFcValue] = useState('')
+
+  // 2. Ficha de Produto & Volume Projetado
   const [productName, setProductName]     = useState('')
   const [sellingPrice, setSellingPrice]   = useState('')
+  const [projectedVolume, setProjectedVolume] = useState('1000') // Volume padrão
   const [markupPercent, setMarkupPercent] = useState('')
 
   // Inline Subitem states
@@ -72,11 +84,10 @@ export default function AiBreakdownPage() {
   const [editingBlockId, setEditingBlockId]     = useState<string | null>(null)
   const [editingBlockName, setEditingBlockName] = useState('')
 
-  // Blocos
+  // Blocos Variáveis
   const [blocks, setBlocks] = useState<BreakdownBlockItem[]>([
     { id: '1', name: 'Matéria-Prima / Insumos', currentCost: 0, targetCost: 0, subItems: [] },
     { id: '2', name: 'Mão de Obra Direta', currentCost: 0, targetCost: 0, subItems: [] },
-    { id: '3', name: 'Energia / Utilidades', currentCost: 0, targetCost: 0, subItems: [] },
   ])
 
   const [customCategory, setCustomCategory] = useState('')
@@ -89,6 +100,11 @@ export default function AiBreakdownPage() {
       let targetOrgId = profile.success && profile.company ? profile.company.id : null
       if (!targetOrgId) targetOrgId = uid
       setOrgId(targetOrgId)
+
+      // Carregar Custos Fixos salvos localmente por Organização (MVP)
+      const savedFC = localStorage.getItem(`deuacordo_fc_${targetOrgId}`)
+      if (savedFC) setFixedCosts(JSON.parse(savedFC))
+      else setFixedCosts([{ id: '1', name: 'Aluguel / Estrutura', value: 1000 }])
 
       const res = await getBreakdownsByOrganization(targetOrgId)
       if (res.success && res.data) {
@@ -118,6 +134,7 @@ export default function AiBreakdownPage() {
     setSelectedId(b.id)
     setProductName(b.productName)
     setSellingPrice(String(b.sellingPrice))
+    setProjectedVolume(b.projectedVolume ? String(b.projectedVolume) : '1000')
     setMarkupPercent(b.currentMarkup ? b.currentMarkup.toFixed(1) : '')
     if (Array.isArray(b.blocks)) {
       setBlocks(b.blocks)
@@ -129,26 +146,80 @@ export default function AiBreakdownPage() {
     setSelectedId(null)
     setProductName('')
     setSellingPrice('')
+    setProjectedVolume('1000')
     setMarkupPercent('')
     setBlocks([
       { id: Date.now().toString() + '1', name: 'Matéria-Prima / Insumos', currentCost: 0, targetCost: 0, subItems: [] },
       { id: Date.now().toString() + '2', name: 'Mão de Obra Direta', currentCost: 0, targetCost: 0, subItems: [] },
-      { id: Date.now().toString() + '3', name: 'Energia / Utilidades', currentCost: 0, targetCost: 0, subItems: [] },
     ])
   }
 
-  // Cálculos
-  const curTotalCost = blocks.reduce((acc, b) => {
+  // 🧮 GESTÃO DE CUSTOS FIXOS
+  function handleAddFixedCost() {
+    if (!newFcName.trim() || !newFcValue) return
+    const newFc: FixedCost = {
+      id: Date.now().toString(),
+      name: newFcName.trim(),
+      value: parseFloat(newFcValue) || 0
+    }
+    const updated = [...fixedCosts, newFc]
+    setFixedCosts(updated)
+    if (orgId) localStorage.setItem(`deuacordo_fc_${orgId}`, JSON.stringify(updated))
+    setNewFcName('')
+    setNewFcValue('')
+  }
+
+  function handleRemoveFixedCost(id: string) {
+    const updated = fixedCosts.filter(fc => fc.id !== id)
+    setFixedCosts(updated)
+    if (orgId) localStorage.setItem(`deuacordo_fc_${orgId}`, JSON.stringify(updated))
+  }
+
+  // 🧮 CÁLCULO DE DILUIÇÃO PONDERADA
+  const totalFixedCostsGlobal = fixedCosts.reduce((acc, fc) => acc + fc.value, 0)
+  
+  const livePrice = parseFloat(sellingPrice) || 0
+  const liveVol = parseFloat(projectedVolume) || 0
+  const liveProjRev = livePrice * liveVol
+
+  // Calcula Faturamento Total da Biblioteca + Faturamento do Produto Atual (Live)
+  let otherProjRev = 0
+  breakdowns.forEach(b => {
+    if (b.id !== selectedId) {
+      const bPrice = parseFloat(b.sellingPrice) || 0
+      const bVol = b.projectedVolume ? parseFloat(b.projectedVolume) : 1000
+      otherProjRev += (bPrice * bVol)
+    }
+  })
+
+  const totalProjRev = liveProjRev + otherProjRev
+  // O peso do produto atual no faturamento total da empresa
+  const currentProductWeight = totalProjRev > 0 ? (liveProjRev / totalProjRev) : (liveProjRev > 0 ? 1 : 0)
+  
+  // O valor total de custo fixo que recai sobre ESTE produto
+  const allocatedFixedCost = totalFixedCostsGlobal * currentProductWeight
+  // Custo fixo por unidade deste produto
+  const dilutedFixedCostPerUnit = liveVol > 0 ? allocatedFixedCost / liveVol : 0
+
+  // 🧮 CÁLCULOS DO BREAKDOWN
+  const variableTotalCost = blocks.reduce((acc, b) => {
     if (b.subItems && b.subItems.length > 0) {
       return acc + b.subItems.reduce((sAcc, sub) => sAcc + (sub.totalCost || 0), 0)
     }
     return acc + (b.currentCost || 0)
   }, 0)
 
-  const tarTotalCost = blocks.reduce((acc, b) => acc + (b.targetCost || 0), 0)
+  const variableTarCost = blocks.reduce((acc, b) => acc + (b.targetCost || 0), 0)
 
+  // Custo Total = Variável + Fixo Diluído
+  const curTotalCost = variableTotalCost + dilutedFixedCostPerUnit
+  const tarTotalCost = variableTarCost + dilutedFixedCostPerUnit
+
+  // Sincronização Bidirecional de Preço e Markup
   const handleSellingPriceChange = (val: string) => {
     setSellingPrice(val)
+    // O recalculo do Markup ocorre naturalmente no render abaixo, 
+    // mas se precisarmos forçar a exibição instantânea:
     const price = parseFloat(val) || 0
     if (curTotalCost > 0 && price > 0) {
       const profit = price - curTotalCost
@@ -166,7 +237,7 @@ export default function AiBreakdownPage() {
     }
   }
 
-  // Subitens Inline
+  // ── SUBITENS INLINE ──
   function handleAddSubItem(blockId: string) {
     if (!subName.trim()) return
     const qty = parseFloat(subQty) || 1
@@ -260,9 +331,10 @@ export default function AiBreakdownPage() {
       id: selectedId || undefined,
       productName: productName.trim(),
       sellingPrice: price,
+      projectedVolume: liveVol,
       blocks,
       organizationId: activeOrgId,
-    })
+    } as any)
 
     setSalvando(false)
 
@@ -398,10 +470,10 @@ export default function AiBreakdownPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 800, color: NAVY, margin: 0 }}>
-              DeuAcordo Breakdown — Construtor & Biblioteca de Custos
+              DeuAcordo Breakdown — Inteligência de Custos & Diluição
             </h1>
             <p style={{ fontSize: 12, color: MUTED, margin: '2px 0 0' }}>
-              Estruturação dinâmica de blocos, subitens em linha e acompanhamento em tempo real.
+              Gerencie seus custos fixos corporativos e calcule margens reais ponderadas por faturamento projetado.
             </p>
           </div>
 
@@ -414,53 +486,105 @@ export default function AiBreakdownPage() {
           </button>
         </div>
 
-        {/* ÁREA 1: CONSTRUTOR FLUIDO */}
+        {/* 🏢 ÁREA 1: GESTÃO DE CUSTOS FIXOS */}
+        <div style={{ background: NAVY, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '1.25rem 1.5rem', marginBottom: '1.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: 13, fontWeight: 800, color: WHITE, margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              1. Custos Fixos Mensais da Empresa (Rateio Global)
+            </h3>
+            <span style={{ fontSize: 11, background: 'rgba(255,255,255,0.1)', color: WHITE, padding: '3px 10px', borderRadius: 20, fontWeight: 700 }}>
+              Total: <span style={{ color: E, marginLeft: 4 }}>{brl(totalFixedCostsGlobal)}</span>
+            </span>
+          </div>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+            {/* Lista de Custos */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 120, overflowY: 'auto', paddingRight: 8 }}>
+              {fixedCosts.length === 0 && <span style={{ fontSize: 12, color: MUTED }}>Nenhum custo fixo cadastrado.</span>}
+              {fixedCosts.map(fc => (
+                <div key={fc.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: '6px 12px', borderRadius: 6 }}>
+                  <span style={{ fontSize: 12, color: WHITE, fontWeight: 600 }}>{fc.name}</span>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, color: E, fontWeight: 700 }}>{brl(fc.value)}</span>
+                    <button type="button" onClick={() => handleRemoveFixedCost(fc.id)} style={{ background: 'none', border: 'none', color: RED, cursor: 'pointer', fontSize: 12 }}>✕</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Adicionar Novo Custo Fixo */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '10px 14px', borderRadius: 8, border: '1px dashed rgba(255,255,255,0.2)' }}>
+              <span style={{ display: 'block', fontSize: 10, fontWeight: 700, color: MUTED, marginBottom: 8, textTransform: 'uppercase' }}>+ Adicionar Custo Fixo</span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="text" placeholder="Ex: Aluguel" value={newFcName} onChange={e => setNewFcName(e.target.value)}
+                  style={{ flex: 1, padding: '6px 10px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 6, color: WHITE, fontSize: 12, outline: 'none' }}
+                />
+                <input
+                  type="number" step="0.01" placeholder="R$ 0,00" value={newFcValue} onChange={e => setNewFcValue(e.target.value)}
+                  style={{ width: 100, padding: '6px 10px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 6, color: WHITE, fontSize: 12, outline: 'none' }}
+                />
+                <button type="button" onClick={handleAddFixedCost} style={{ background: E, color: WHITE, border: 'none', padding: '0 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Add</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ÁREA 2: CONSTRUTOR FLUIDO DE PRODUTOS */}
         <form onSubmit={handleSave}>
           <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '1.25rem 1.5rem', marginBottom: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
             <h3 style={{ fontSize: 13, fontWeight: 800, color: NAVY, margin: '0 0 1rem', textTransform: 'uppercase' }}>
-              1. Precificação do Produto
+              2. Ficha de Precificação do Produto
             </h3>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 200px 180px', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 140px 140px', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 4 }}>NOME DO PRODUTO *</label>
                 <input
-                  type="text"
-                  required
-                  placeholder="Ex: X-Salada Especial / Produto B2B"
-                  value={productName}
-                  onChange={e => setProductName(e.target.value)}
+                  type="text" required placeholder="Ex: Hambúrguer Artesanal"
+                  value={productName} onChange={e => setProductName(e.target.value)}
                   style={{ width: '100%', padding: '10px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 13, outline: 'none' }}
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 4 }}>PREÇO DE VENDA (R$)</label>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 4 }}>VENDAS/MÊS (QTD)</label>
                 <input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={sellingPrice}
-                  onChange={e => handleSellingPriceChange(e.target.value)}
+                  type="number" required placeholder="Ex: 1000"
+                  value={projectedVolume} onChange={e => setProjectedVolume(e.target.value)}
                   style={{ width: '100%', padding: '10px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 13, outline: 'none' }}
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: E, marginBottom: 4 }}>MARKUP DESEJADO (%)</label>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 4 }}>PREÇO VENDA (R$)</label>
                 <input
-                  type="number"
-                  step="0.1"
-                  placeholder="Ex: 50"
-                  value={markupPercent}
-                  onChange={e => handleMarkupChange(e.target.value)}
+                  type="number" step="0.01" placeholder="0.00"
+                  value={sellingPrice} onChange={e => handleSellingPriceChange(e.target.value)}
+                  style={{ width: '100%', padding: '10px', background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 13, outline: 'none' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: E, marginBottom: 4 }}>MARKUP (%)</label>
+                <input
+                  type="number" step="0.1" placeholder="Ex: 50"
+                  value={markupPercent} onChange={e => handleMarkupChange(e.target.value)}
                   style={{ width: '100%', padding: '10px', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 8, fontSize: 13, fontWeight: 700, color: '#065F46', outline: 'none' }}
                 />
               </div>
             </div>
+            
+            <div style={{ marginTop: 12, padding: '8px 12px', background: SLATE, borderRadius: 6, fontSize: 11, color: MUTED }}>
+              💡 <strong>Inteligência:</strong> O sistema utiliza o <em>Faturamento Projetado</em> deste produto ({brl(liveProjRev)}) 
+              para identificar que ele representa <strong>{(currentProductWeight * 100).toFixed(2)}%</strong> do seu negócio, diluindo exatamente <strong>{brl(dilutedFixedCostPerUnit)}/un</strong> dos seus custos fixos totais nesta precificação.
+            </div>
           </div>
 
           <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 14, padding: '1.5rem', marginBottom: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <h3 style={{ fontSize: 13, fontWeight: 800, color: NAVY, margin: '0 0 1rem', textTransform: 'uppercase' }}>
+              3. Construtor de Cost Breakdown (Variáveis)
+            </h3>
             <div style={{ background: SLATE, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '1rem', marginBottom: '1.5rem', display: 'flex', gap: 12, alignItems: 'flex-end' }}>
               <div style={{ flex: 1 }}>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: NAVY, marginBottom: 4 }}>ADICIONAR BLOCO PADRÃO</label>
@@ -619,11 +743,21 @@ export default function AiBreakdownPage() {
                       )}
                     </div>
                   ))}
+
+                  {/* BLOCO ESPECIAL: CUSTOS FIXOS DILUÍDOS */}
+                  <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: 8, border: '1.5px dashed #CBD5E1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: NAVY }}>🏢 Custo Fixo Diluído / un</span>
+                      <p style={{ fontSize: 10, color: MUTED, margin: '2px 0 0' }}>Alocado: {brl(allocatedFixedCost)} ({ (currentProductWeight * 100).toFixed(1) }% do total)</p>
+                    </div>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: NAVY }}>+ {brl(dilutedFixedCostPerUnit)}</span>
+                  </div>
+
                 </div>
 
                 <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: `1px solid ${BORDER}`, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
                   <div>
-                    <p style={{ fontSize: 10, fontWeight: 700, color: MUTED, margin: 0 }}>CUSTO TOTAL</p>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: MUTED, margin: 0 }}>CUSTO UNIT. TOTAL</p>
                     <p style={{ fontSize: 14, fontWeight: 800, color: NAVY, margin: '2px 0 0' }}>{brl(curTotalCost)}</p>
                   </div>
                   <div>
@@ -631,7 +765,7 @@ export default function AiBreakdownPage() {
                     <p style={{ fontSize: 14, fontWeight: 800, color: curProfit >= 0 ? E : RED, margin: '2px 0 0' }}>{brl(curProfit)}</p>
                   </div>
                   <div>
-                    <p style={{ fontSize: 10, fontWeight: 700, color: MUTED, margin: 0 }}>MARKUP</p>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: MUTED, margin: 0 }}>MARKUP REAL</p>
                     <p style={{ fontSize: 14, fontWeight: 800, color: NAVY, margin: '2px 0 0' }}>{markupPercent}%</p>
                   </div>
                 </div>
@@ -656,11 +790,19 @@ export default function AiBreakdownPage() {
                       />
                     </div>
                   ))}
+
+                  {/* BLOCO ESPECIAL: CUSTOS FIXOS DILUÍDOS TARGET */}
+                  <div style={{ background: '#ECFDF5', padding: '12px', borderRadius: 8, border: '1.5px dashed #6EE7B7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: '#065F46' }}>🏢 Fixo Diluído (Inalterável)</span>
+                    </div>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: '#065F46' }}>+ {brl(dilutedFixedCostPerUnit)}</span>
+                  </div>
                 </div>
 
                 <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #A7F3D0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <div>
-                    <p style={{ fontSize: 10, fontWeight: 700, color: '#047857', margin: 0 }}>CUSTO ALVO</p>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: '#047857', margin: 0 }}>CUSTO ALVO TOTAL</p>
                     <p style={{ fontSize: 14, fontWeight: 800, color: E, margin: '2px 0 0' }}>{brl(tarTotalCost)}</p>
                   </div>
                   <div>
@@ -677,10 +819,10 @@ export default function AiBreakdownPage() {
           <div style={{ background: '#ECFDF5', border: '1.5px solid #A7F3D0', borderRadius: 14, padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <p style={{ fontSize: 11, fontWeight: 800, color: '#065F46', letterSpacing: '0.07em', textTransform: 'uppercase', margin: 0 }}>
-                OPORTUNIDADE DE SAVING POTENCIAL (GAP)
+                OPORTUNIDADE DE SAVING POTENCIAL (GAP UNITÁRIO)
               </p>
               <p style={{ fontSize: 13, color: '#047857', margin: '3px 0 0' }}>
-                Economia acumulada estimada se atingir as metas configuradas nos blocos.
+                Redução direta no custo variável estimada se atingir as metas configuradas.
               </p>
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -711,14 +853,18 @@ export default function AiBreakdownPage() {
           </div>
         </form>
 
-        {/* ÁREA 2: OUTPUT & BIBLIOTECA DE PRODUTOS */}
+        {/* ÁREA 4: OUTPUT & BIBLIOTECA DE PRODUTOS */}
         <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 14, padding: '1.5rem' }}>
-          <h3 style={{ fontSize: 14, fontWeight: 800, color: NAVY, margin: '0 0 4px', textTransform: 'uppercase' }}>
-            2. Biblioteca de Produtos Cadastrados (Output)
-          </h3>
-          <p style={{ fontSize: 12, color: MUTED, margin: '0 0 1.25rem' }}>
-            Selecione qualquer produto abaixo para carregar seus dados instantaneamente no construtor acima.
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+            <div>
+              <h3 style={{ fontSize: 14, fontWeight: 800, color: NAVY, margin: '0 0 4px', textTransform: 'uppercase' }}>
+                4. Biblioteca de Produtos (Portfólio Consolidado)
+              </h3>
+              <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>
+                Faturamento Total Projetado da Empresa: <strong>{brl(totalProjRev)}</strong>
+              </p>
+            </div>
+          </div>
 
           {breakdowns.length === 0 ? (
             <div style={{ padding: '2rem', textAlign: 'center', background: SLATE, borderRadius: 10, border: `1.5px dashed ${BORDER}` }}>
@@ -728,6 +874,10 @@ export default function AiBreakdownPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {breakdowns.map(b => {
                 const isSelected = selectedId === b.id
+                const bVol = b.projectedVolume ? parseFloat(b.projectedVolume) : 1000
+                const bRev = (parseFloat(b.sellingPrice) || 0) * bVol
+                const bWeight = totalProjRev > 0 ? (bRev / totalProjRev) : 0
+                
                 return (
                   <div
                     key={b.id}
@@ -741,11 +891,11 @@ export default function AiBreakdownPage() {
                     }}
                   >
                     <div>
-                      <p style={{ fontSize: 14, fontWeight: 800, color: NAVY, margin: '0 0 2px' }}>{b.productName}</p>
+                      <p style={{ fontSize: 14, fontWeight: 800, color: NAVY, margin: '0 0 2px' }}>{b.productName} <span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}>({bVol} un/mês)</span></p>
                       <div style={{ display: 'flex', gap: 15, fontSize: 12, color: MUTED }}>
-                        <span>Preço de Venda: <strong style={{ color: NAVY }}>{brl(b.sellingPrice)}</strong></span>
-                        <span>Custo Total: <strong style={{ color: NAVY }}>{brl(b.totalCurrentCost)}</strong></span>
-                        <span>Lucro: <strong style={{ color: E }}>{brl(b.currentProfit)}</strong></span>
+                        <span>Preço: <strong style={{ color: NAVY }}>{brl(b.sellingPrice)}</strong></span>
+                        <span>Faturamento: <strong style={{ color: NAVY }}>{brl(bRev)}</strong></span>
+                        <span>Peso: <strong style={{ color: NAVY }}>{(bWeight * 100).toFixed(1)}%</strong></span>
                       </div>
                     </div>
 
