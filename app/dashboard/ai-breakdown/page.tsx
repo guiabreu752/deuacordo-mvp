@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import Link from 'link'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 import {
@@ -89,6 +89,11 @@ export default function AiBreakdownPage() {
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
   const [newFcName, setNewFcName]   = useState('')
   const [newFcValue, setNewFcValue] = useState('')
+  
+  // Edição inline de custo fixo
+  const [editingFcId, setEditingFcId]       = useState<string | null>(null)
+  const [editingFcName, setEditingFcName]   = useState('')
+  const [editingFcValue, setEditingFcValue] = useState('')
 
   // 2. Banco de Insumos / Matérias-Primas
   const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([])
@@ -182,15 +187,12 @@ export default function AiBreakdownPage() {
     setCalculatedSubCost(baseCost * (1 + scrapPct / 100))
   }, [selectedRmId, subQty, subUnit, subScrapRate, rawMaterials, subName])
 
-  // 🛡️ POLYFILL: Função que neutraliza a falha do Backend lendo a memória local se o Supabase não retornar o volume
   function getSavedVolume(b: any): number {
     const dbVol = b?.projectedVolume ?? b?.projected_volume ?? b?.volume
     if (dbVol !== undefined && dbVol !== null) {
       const parsed = Number(dbVol)
       if (!isNaN(parsed) && parsed > 0) return parsed
     }
-    
-    // Se o banco falhar em devolver, puxa o volume exato que o Front-end salvou no cache
     if (b?.id) {
       const localVol = localStorage.getItem(`deuacordo_vol_${b.id}`)
       if (localVol) {
@@ -206,7 +208,6 @@ export default function AiBreakdownPage() {
     setProductName(b.productName || b.product_name || '')
     setSellingPrice(b.sellingPrice !== undefined && b.sellingPrice !== null ? String(b.sellingPrice) : '')
     
-    // Carrega o volume blindado pelo Polyfill
     const vol = getSavedVolume(b)
     setProjectedVolume(String(vol))
     
@@ -237,15 +238,24 @@ export default function AiBreakdownPage() {
     setNewFcName(''); setNewFcValue('')
   }
 
-  function handleRemoveFixedCost(id: string) { persistFC(fixedCosts.filter(fc => fc.id !== id)) }
-
-  function handleAddRawMaterial() {
-    if (!newRmName.trim() || !newRmPrice) return
-    persistRM([...rawMaterials, { id: Date.now().toString(), name: newRmName.trim(), price: parseFloat(newRmPrice) || 0, unit: newRmUnit }])
-    setNewRmName(''); setNewRmPrice('')
+  function handleStartEditFc(fc: FixedCost) {
+    setEditingFcId(fc.id)
+    setEditingFcName(fc.name)
+    setEditingFcValue(String(fc.value))
   }
 
-  function handleRemoveRawMaterial(id: string) { persistRM(rawMaterials.filter(rm => rm.id !== id)) }
+  function handleSaveEditFc() {
+    if (!editingFcId || !editingFcName.trim()) return
+    const updated = fixedCosts.map(fc => 
+      fc.id === editingFcId ? { ...fc, name: editingFcName.trim(), value: parseFloat(editingFcValue) || 0 } : fc
+    )
+    persistFC(updated)
+    setEditingFcId(null)
+    setEditingFcName('')
+    setEditingFcValue('')
+  }
+
+  function handleRemoveFixedCost(id: string) { persistFC(fixedCosts.filter(fc => fc.id !== id)) }
 
   // 🧮 CÁLCULOS FINANCEIROS DO PRODUTO ATIVO
   const totalFixedCostsGlobal = fixedCosts.reduce((acc, fc) => acc + fc.value, 0)
@@ -279,7 +289,7 @@ export default function AiBreakdownPage() {
 
   const curTotalCost = variableTotalCost + dilutedFixedCostPerUnit + taxAmountPerUnit
 
-  // 📊 CONSOLIDAÇÃO DO PORTFÓLIO (Utilizando o Polyfill para blindar contra falha do backend)
+  // 📊 CONSOLIDAÇÃO DO PORTFÓLIO
   const portfolioTotalRev = breakdowns.reduce((acc, b) => {
     const p = parseFloat(b.sellingPrice || b.selling_price) || 0
     const v = getSavedVolume(b)
@@ -363,7 +373,6 @@ export default function AiBreakdownPage() {
 
   function handleRemoveBlock(id: string) { setBlocks(prev => prev.filter(b => b.id !== id)) }
 
-  // 🛡️ SALVAMENTO BLINDADO
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     const activeOrgId = orgId || user?.id
@@ -375,7 +384,6 @@ export default function AiBreakdownPage() {
 
     setSalvando(true)
     
-    // Dispara a tentativa de salvar mandando em TODOS os formatos comuns
     const res = await saveCostBreakdown({
       id: selectedId || undefined,
       productName: productName.trim(),
@@ -393,18 +401,14 @@ export default function AiBreakdownPage() {
     setSalvando(false)
 
     if (res.success) {
-      // 1. Grava no Local Storage (Polyfill) para garantir que a tela mantenha a qtd.
       const savedId = res.data?.id || selectedId
       if (savedId) {
         localStorage.setItem(`deuacordo_vol_${savedId}`, String(numericVol))
       }
 
-      // 2. Atualiza a tela
       const updated = await getBreakdownsByOrganization(activeOrgId)
       if (updated.success && updated.data) {
         setBreakdowns(updated.data)
-        
-        // 3. Força a recarga correta ignorando a possível falha do backend
         const newlySaved = updated.data.find((item: any) => item.id === savedId) || res.data
         loadBreakdownIntoForm({ ...newlySaved, projectedVolume: numericVol })
       }
@@ -419,7 +423,7 @@ export default function AiBreakdownPage() {
     const activeOrgId = orgId || user?.id
     const res = await deleteCostBreakdown(id)
     if (res.success && activeOrgId) {
-      localStorage.removeItem(`deuacordo_vol_${id}`) // Limpa a memória
+      localStorage.removeItem(`deuacordo_vol_${id}`)
       const updated = await getBreakdownsByOrganization(activeOrgId)
       if (updated.success && updated.data) {
         setBreakdowns(updated.data)
@@ -578,12 +582,50 @@ export default function AiBreakdownPage() {
             </div>
           </section>
 
-          {/* FORMULÁRIOS DE ENTRADA */}
+          {/* FORMULÁRIOS DE ENTRADA (INVERTIDO: CUSTOS FIXOS PRIMEIRO) */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '32px' }}>
             
-            {/* PARÂMETROS COMERCIAIS */}
+            {/* 1. CUSTOS FIXOS (OPEX) */}
             <section className="card">
-              <div className="card-header"><h2 style={{ fontSize: 15, margin: 0, fontWeight: 700 }}>1. Parâmetros Comerciais & Tributários</h2></div>
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 style={{ fontSize: 15, margin: 0, fontWeight: 700 }}>1. Estrutura de Custos Fixos (OPEX)</h2>
+                <span style={{ fontSize: 12, background: TOKENS.bgCardElevated, padding: '4px 10px', borderRadius: 12, fontWeight: 700 }}>Total Fixo: <span style={{ color: TOKENS.primary }}>{brl(totalFixedCostsGlobal)}</span></span>
+              </div>
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input type="text" className="input-b2b" placeholder="Descrição (Ex: Aluguel Galpão)" value={newFcName} onChange={e => setNewFcName(e.target.value)} />
+                  <input type="number" className="input-b2b" style={{ width: 120 }} placeholder="R$ Mensal" value={newFcValue} onChange={e => setNewFcValue(e.target.value)} />
+                  <button type="button" className="btn btn-outline" onClick={handleAddFixedCost}>+ Add</button>
+                </div>
+                <div style={{ overflowY: 'auto', maxHeight: '220px', background: TOKENS.bgApp, borderRadius: 8, border: `1px solid ${TOKENS.border}` }}>
+                  {fixedCosts.map(fc => (
+                    <div key={fc.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: `1px solid ${TOKENS.border}` }}>
+                      {editingFcId === fc.id ? (
+                        <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+                          <input type="text" className="input-b2b" style={{ padding: '4px 8px' }} value={editingFcName} onChange={e => setEditingFcName(e.target.value)} />
+                          <input type="number" className="input-b2b" style={{ padding: '4px 8px', width: 100 }} value={editingFcValue} onChange={e => setEditingFcValue(e.target.value)} />
+                          <button onClick={handleSaveEditFc} className="btn btn-primary" style={{ padding: '4px 8px', fontSize: 11 }}>OK</button>
+                          <button onClick={() => setEditingFcId(null)} className="btn btn-outline" style={{ padding: '4px 8px', fontSize: 11 }}>Cancel</button>
+                        </div>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: 13 }}>{fc.name}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <span className="font-mono" style={{ fontSize: 13, color: TOKENS.textMuted }}>{brl(fc.value)}</span>
+                            <button onClick={() => handleStartEditFc(fc)} className="btn-ghost" style={{ fontSize: 12, padding: 2 }}>✏️</button>
+                            <button onClick={() => handleRemoveFixedCost(fc.id)} className="btn-ghost" style={{ color: TOKENS.danger, padding: 0 }}>✕</button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            {/* 2. PARÂMETROS COMERCIAIS */}
+            <section className="card">
+              <div className="card-header"><h2 style={{ fontSize: 15, margin: 0, fontWeight: 700 }}>2. Parâmetros Comerciais & Tributários</h2></div>
               <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div style={{ gridColumn: 'span 2' }}>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: TOKENS.textMuted, marginBottom: 8 }}>Nome do Produto / SKU *</label>
@@ -604,32 +646,6 @@ export default function AiBreakdownPage() {
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: TOKENS.textMuted, marginBottom: 8 }}>Impostos Faturados (%)</label>
                   <input type="number" step="0.1" className="input-b2b" value={taxRateOnSales} onChange={e => setTaxRateOnSales(e.target.value)} />
-                </div>
-              </div>
-            </section>
-
-            {/* CUSTOS FIXOS */}
-            <section className="card">
-              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h2 style={{ fontSize: 15, margin: 0, fontWeight: 700 }}>2. Estrutura de Custos Fixos (OPEX)</h2>
-                <span style={{ fontSize: 12, background: TOKENS.bgCardElevated, padding: '4px 10px', borderRadius: 12, fontWeight: 700 }}>Total Fixo: <span style={{ color: TOKENS.primary }}>{brl(totalFixedCostsGlobal)}</span></span>
-              </div>
-              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input type="text" className="input-b2b" placeholder="Descrição (Ex: Aluguel Galpão)" value={newFcName} onChange={e => setNewFcName(e.target.value)} />
-                  <input type="number" className="input-b2b" style={{ width: 120 }} placeholder="R$ Mensal" value={newFcValue} onChange={e => setNewFcValue(e.target.value)} />
-                  <button type="button" className="btn btn-outline" onClick={handleAddFixedCost}>+ Add</button>
-                </div>
-                <div style={{ overflowY: 'auto', maxHeight: '180px', background: TOKENS.bgApp, borderRadius: 8, border: `1px solid ${TOKENS.border}` }}>
-                  {fixedCosts.map(fc => (
-                    <div key={fc.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 16px', borderBottom: `1px solid ${TOKENS.border}` }}>
-                      <span style={{ fontSize: 13 }}>{fc.name}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <span className="font-mono" style={{ fontSize: 13, color: TOKENS.textMuted }}>{brl(fc.value)}</span>
-                        <button onClick={() => handleRemoveFixedCost(fc.id)} className="btn-ghost" style={{ color: TOKENS.danger, padding: 0 }}>✕</button>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </div>
             </section>
@@ -736,7 +752,6 @@ export default function AiBreakdownPage() {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {breakdowns.map(b => {
-                    // O item na listagem agora lê o volume real protegido do Polyfill
                     const itemVol = getSavedVolume(b)
                     
                     return (
