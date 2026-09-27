@@ -182,14 +182,20 @@ export default function AiBreakdownPage() {
     setCalculatedSubCost(baseCost * (1 + scrapPct / 100))
   }, [selectedRmId, subQty, subUnit, subScrapRate, rawMaterials, subName])
 
-  // CORREÇÃO DEFINTIVA: Carregamento do volume gravado da ficha técnica
+  // EXTRAÇÃO FLEXÍVEL DE VOLUME (Lê projectedVolume ou projected_volume)
+  function getVolumeFromItem(b: any): number {
+    const rawVal = b?.projectedVolume ?? b?.projected_volume ?? b?.volume
+    const parsed = Number(rawVal)
+    return !isNaN(parsed) && parsed > 0 ? parsed : 100
+  }
+
   function loadBreakdownIntoForm(b: any) {
     setSelectedId(b.id)
-    setProductName(b.productName || '')
+    setProductName(b.productName || b.product_name || '')
     setSellingPrice(b.sellingPrice !== undefined && b.sellingPrice !== null ? String(b.sellingPrice) : '')
     
-    const parsedVol = b.projectedVolume !== undefined && b.projectedVolume !== null ? String(b.projectedVolume) : '100'
-    setProjectedVolume(parsedVol)
+    const vol = getVolumeFromItem(b)
+    setProjectedVolume(String(vol))
     
     setMarkupPercent(b.currentMarkup ? b.currentMarkup.toFixed(1) : '')
     if (Array.isArray(b.blocks)) setBlocks(b.blocks)
@@ -228,10 +234,10 @@ export default function AiBreakdownPage() {
 
   function handleRemoveRawMaterial(id: string) { persistRM(rawMaterials.filter(rm => rm.id !== id)) }
 
-  // 🧮 CÁLCULOS FINANCEIROS DO PRODUTO ATIVO NO FORMULÁRIO
+  // 🧮 CÁLCULOS FINANCEIROS DO PRODUTO ATIVO
   const totalFixedCostsGlobal = fixedCosts.reduce((acc, fc) => acc + fc.value, 0)
   const livePrice = parseFloat(sellingPrice) || 0
-  const liveVol   = Math.max(parseFloat(projectedVolume) || 0, 1)
+  const liveVol   = Math.max(parseFloat(projectedVolume) || 1, 1)
   const taxPct    = parseFloat(taxRateOnSales) || 0
   
   const taxAmountPerUnit = livePrice * (taxPct / 100)
@@ -240,8 +246,8 @@ export default function AiBreakdownPage() {
   let otherProjRev = 0
   breakdowns.forEach(b => {
     if (b.id !== selectedId) {
-      const bPrice = parseFloat(b.sellingPrice) || 0
-      const bVol = b.projectedVolume ? parseFloat(b.projectedVolume) : 100
+      const bPrice = parseFloat(b.sellingPrice || b.selling_price) || 0
+      const bVol = getVolumeFromItem(b)
       otherProjRev += (bPrice * bVol)
     }
   })
@@ -260,23 +266,21 @@ export default function AiBreakdownPage() {
 
   const curTotalCost = variableTotalCost + dilutedFixedCostPerUnit + taxAmountPerUnit
 
-  // 📊 CONSOLIDAÇÃO FIXA DO PORTFÓLIO COMPLETO PARA O DASHBOARD INICIAL
+  // 📊 CONSOLIDAÇÃO DO PORTFÓLIO
   const portfolioTotalRev = breakdowns.reduce((acc, b) => {
-    const p = parseFloat(b.sellingPrice) || 0
-    const v = parseFloat(b.projectedVolume) || 100
+    const p = parseFloat(b.sellingPrice || b.selling_price) || 0
+    const v = getVolumeFromItem(b)
     return acc + (p * v)
   }, 0)
 
-  const portfolioTotalVol = breakdowns.reduce((acc, b) => acc + (parseFloat(b.projectedVolume) || 100), 0)
+  const portfolioTotalVol = breakdowns.reduce((acc, b) => acc + getVolumeFromItem(b), 0)
 
-  // Variáveis Fixo-Consolidadas do Portfólio Geral
   const portfolioAvgPrice = breakdowns.length > 0 ? portfolioTotalRev / (portfolioTotalVol || 1) : 0
   const portfolioUnitCost = portfolioTotalVol > 0 ? (totalFixedCostsGlobal / portfolioTotalVol) : 0
   const portfolioProfit = portfolioAvgPrice - portfolioUnitCost
   const portfolioMarginPct = portfolioAvgPrice > 0 ? ((portfolioProfit / portfolioAvgPrice) * 100) : 0
   const portfolioBreakEven = portfolioAvgPrice > 0 ? Math.ceil(totalFixedCostsGlobal / portfolioAvgPrice) : 0
 
-  // As métricas do dashboard agora exibem consistentemente o portfólio consolidado
   const displayRevenue = portfolioTotalRev
   const displayPrice = portfolioAvgPrice
   const displayVolume = portfolioTotalVol
@@ -346,7 +350,7 @@ export default function AiBreakdownPage() {
 
   function handleRemoveBlock(id: string) { setBlocks(prev => prev.filter(b => b.id !== id)) }
 
-  // CORREÇÃO CRÍTICA DO SALVAMENTO: Envia o volume dinâmico digitado para o Supabase
+  // SALVAMENTO COMPATÍVEL COM AMBOS OS SCHEMAS
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     const activeOrgId = orgId || user?.id
@@ -354,17 +358,24 @@ export default function AiBreakdownPage() {
     const price = parseFloat(sellingPrice) || 0
     if (!productName.trim() || price <= 0) return alert('Informe o nome do produto e um preço de venda válido.')
 
-    const volToSave = parseFloat(projectedVolume) || 100
+    const numericVol = parseFloat(projectedVolume) || 100
 
     setSalvando(true)
+    
+    // Passamos projectedVolume e projected_volume para garantir gravação independente do mapeamento da action
     const res = await saveCostBreakdown({
       id: selectedId || undefined,
       productName: productName.trim(),
+      product_name: productName.trim(),
       sellingPrice: price,
-      projectedVolume: volToSave,
+      selling_price: price,
+      projectedVolume: numericVol,
+      projected_volume: numericVol,
       blocks,
       organizationId: activeOrgId,
+      organization_id: activeOrgId,
     } as any)
+
     setSalvando(false)
 
     if (res.success && res.data) {
@@ -373,7 +384,7 @@ export default function AiBreakdownPage() {
         setBreakdowns(updated.data)
         loadBreakdownIntoForm(res.data)
       }
-      alert('Breakdown e volume gravados com sucesso!')
+      alert('Ficha Técnica e volume salvos com sucesso!')
     } else alert(res.error || 'Erro ao salvar breakdown.')
   }
 
@@ -518,7 +529,7 @@ export default function AiBreakdownPage() {
                 </div>
 
                 <div className={`kpi-card ${displayMarginPct >= 0 ? 'positive' : 'negative'}`}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Margem Médi do Portfólio</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: TOKENS.textMuted, textTransform: 'uppercase' }}>Margem Média do Portfólio</span>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '8px 0 4px' }}>
                     <p className="font-mono" style={{ fontSize: 24, fontWeight: 800, color: displayMarginPct >= 0 ? TOKENS.primary : TOKENS.danger, margin: 0 }}>{pct(displayMarginPct)}</p>
                   </div>
@@ -561,6 +572,7 @@ export default function AiBreakdownPage() {
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: TOKENS.textMuted, marginBottom: 8 }}>Vendas/Mês Projetada (un/mês)</label>
+                  {/* INPUT DE VOLUME PERSONALIZADO */}
                   <input type="number" min="1" className="input-b2b" value={projectedVolume} onChange={e => setProjectedVolume(e.target.value)} />
                 </div>
                 <div>
@@ -697,21 +709,24 @@ export default function AiBreakdownPage() {
                 <p style={{ fontSize: 13, color: TOKENS.textMuted, textAlign: 'center', margin: '40px 0' }}>Nenhum produto cadastrado no portfólio.</p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {breakdowns.map(b => (
-                    <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: selectedId === b.id ? TOKENS.bgCardElevated : TOKENS.bgApp, border: `1px solid ${selectedId === b.id ? TOKENS.primary : TOKENS.border}`, borderRadius: 12, transition: 'all 0.2s' }}>
-                      <div>
-                        <p style={{ fontSize: 14, fontWeight: 700, margin: '0 0 6px' }}>{b.productName} <span style={{ fontSize: 12, color: TOKENS.textMuted, fontWeight: 500 }}>({b.projectedVolume || 100} un/mês)</span></p>
-                        <div style={{ display: 'flex', gap: 16, fontSize: 12, color: TOKENS.textMuted }} className="font-mono">
-                          <span>Preço: <strong style={{ color: TOKENS.textMain }}>{brl(b.sellingPrice)}</strong></span>
-                          <span>Fat. Base: <strong style={{ color: TOKENS.primary }}>{brl((b.sellingPrice || 0) * (b.projectedVolume || 100))}</strong></span>
+                  {breakdowns.map(b => {
+                    const itemVol = getVolumeFromItem(b)
+                    return (
+                      <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: selectedId === b.id ? TOKENS.bgCardElevated : TOKENS.bgApp, border: `1px solid ${selectedId === b.id ? TOKENS.primary : TOKENS.border}`, borderRadius: 12, transition: 'all 0.2s' }}>
+                        <div>
+                          <p style={{ fontSize: 14, fontWeight: 700, margin: '0 0 6px' }}>{b.productName || b.product_name} <span style={{ fontSize: 12, color: TOKENS.primary, fontWeight: 600 }}>({itemVol} un/mês)</span></p>
+                          <div style={{ display: 'flex', gap: 16, fontSize: 12, color: TOKENS.textMuted }} className="font-mono">
+                            <span>Preço: <strong style={{ color: TOKENS.textMain }}>{brl(b.sellingPrice || b.selling_price)}</strong></span>
+                            <span>Fat. Proj: <strong style={{ color: TOKENS.primary }}>{brl((b.sellingPrice || b.selling_price || 0) * itemVol)}</strong></span>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button onClick={() => loadBreakdownIntoForm(b)} className="btn btn-outline" style={{ padding: '6px 12px' }}>Abrir / Editar</button>
+                          <button onClick={() => handleDelete(b.id)} className="btn-danger" style={{ padding: '6px 10px', borderRadius: 8, cursor: 'pointer' }}>🗑️</button>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button onClick={() => loadBreakdownIntoForm(b)} className="btn btn-outline" style={{ padding: '6px 12px' }}>Abrir / Editar</button>
-                        <button onClick={() => handleDelete(b.id)} className="btn-danger" style={{ padding: '6px 10px', borderRadius: 8, cursor: 'pointer' }}>🗑️</button>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
