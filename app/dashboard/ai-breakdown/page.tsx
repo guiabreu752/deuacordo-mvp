@@ -94,7 +94,7 @@ export default function AiBreakdownPage() {
   const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([])
   const [newRmName, setNewRmName]       = useState('')
   const [newRmPrice, setNewRmPrice]     = useState('')
-  var [newRmUnit, setNewRmUnit]       = useState('kg')
+  const [newRmUnit]                     = useState('kg')
 
   // 3. Ficha de Produto & Tributação
   const [productName, setProductName]         = useState('')
@@ -182,13 +182,11 @@ export default function AiBreakdownPage() {
     setCalculatedSubCost(baseCost * (1 + scrapPct / 100))
   }, [selectedRmId, subQty, subUnit, subScrapRate, rawMaterials, subName])
 
-  // CORREÇÃO CRÍTICA DO BUG 2: Carrega dinamicamente a quantidade do produto sem travar
   function loadBreakdownIntoForm(b: any) {
     setSelectedId(b.id)
     setProductName(b.productName || '')
     setSellingPrice(b.sellingPrice !== undefined && b.sellingPrice !== null ? String(b.sellingPrice) : '')
     
-    // Tratamento dinâmico para projectedVolume
     const vol = b.projectedVolume !== undefined && b.projectedVolume !== null ? String(b.projectedVolume) : '100'
     setProjectedVolume(vol)
     
@@ -229,16 +227,15 @@ export default function AiBreakdownPage() {
 
   function handleRemoveRawMaterial(id: string) { persistRM(rawMaterials.filter(rm => rm.id !== id)) }
 
-  // 🧮 CÁLCULOS FINANCEIROS DO PRODUTO ATIVO
+  // 🧮 CÁLCULOS FINANCEIROS
   const totalFixedCostsGlobal = fixedCosts.reduce((acc, fc) => acc + fc.value, 0)
   const livePrice = parseFloat(sellingPrice) || 0
-  const liveVol   = Math.max(parseFloat(projectedVolume) || 0, 1) // Previne divisão por zero
+  const liveVol   = Math.max(parseFloat(projectedVolume) || 0, 1)
   const taxPct    = parseFloat(taxRateOnSales) || 0
   
   const taxAmountPerUnit = livePrice * (taxPct / 100)
   const liveProjRev = livePrice * liveVol
 
-  // Rateio de Custo Fixo por Faturamento
   let otherProjRev = 0
   breakdowns.forEach(b => {
     if (b.id !== selectedId) {
@@ -262,7 +259,6 @@ export default function AiBreakdownPage() {
 
   const curTotalCost = variableTotalCost + dilutedFixedCostPerUnit + taxAmountPerUnit
 
-  // CORREÇÃO CRÍTICA DO BUG 1: CONSOLIDAÇÃO SE NENHUM PRODUTO ESTIVER EM EDIÇÃO
   const portfolioTotalRev = breakdowns.reduce((acc, b) => {
     const p = parseFloat(b.sellingPrice) || 0
     const v = parseFloat(b.projectedVolume) || 100
@@ -271,17 +267,14 @@ export default function AiBreakdownPage() {
 
   const portfolioTotalVol = breakdowns.reduce((acc, b) => acc + (parseFloat(b.projectedVolume) || 100), 0)
 
-  // Métricas Exibidas no Dashboard (Módulos dinâmicos)
   const displayRevenue = livePrice > 0 ? liveProjRev : portfolioTotalRev
   const displayPrice = livePrice > 0 ? livePrice : (breakdowns.length > 0 ? portfolioTotalRev / (portfolioTotalVol || 1) : 0)
-  const displayVolume = livePrice > 0 ? liveVol : portfolioTotalVol
   const displayUnitCost = livePrice > 0 ? curTotalCost : (breakdowns.length > 0 ? (totalFixedCostsGlobal / (portfolioTotalVol || 1)) : 0)
 
   const curProfit = livePrice > 0 ? (livePrice - curTotalCost) : (displayPrice - displayUnitCost)
   const profitMarginPercent = displayPrice > 0 ? ((curProfit / displayPrice) * 100) : 0
   
   const unitContributionMargin = livePrice > 0 ? (livePrice - variableTotalCost - taxAmountPerUnit) : (displayPrice - (variableTotalCost || 0))
-  const contributionMarginPercent = displayPrice > 0 ? ((unitContributionMargin / displayPrice) * 100) : 0
   const breakEvenUnits = unitContributionMargin > 0 ? Math.ceil((allocatedFixedCost || totalFixedCostsGlobal) / unitContributionMargin) : 0
 
   const handleSellingPriceChange = (val: string) => {
@@ -349,12 +342,6 @@ export default function AiBreakdownPage() {
     setBlocks(prev => prev.map(b => (b.id === id ? { ...b, [field]: parseFloat(value) || 0 } : b)))
   }
 
-  function saveBlockName(id: string) {
-    if (!editingBlockName.trim()) return
-    setBlocks(prev => prev.map(b => (b.id === id ? { ...b, name: editingBlockName.trim() } : b)))
-    setEditingBlockId(null); setEditingBlockName('')
-  }
-
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     const activeOrgId = orgId || user?.id
@@ -367,7 +354,7 @@ export default function AiBreakdownPage() {
       id: selectedId || undefined,
       productName: productName.trim(),
       sellingPrice: price,
-      projectedVolume: parseFloat(projectedVolume) || 100, // Salva o volume dinâmico digitado pelo usuário
+      projectedVolume: parseFloat(projectedVolume) || 100,
       blocks,
       organizationId: activeOrgId,
     } as any)
@@ -501,7 +488,7 @@ export default function AiBreakdownPage() {
             </div>
           </header>
 
-          {/* DASHBOARD DE KPIs (CORRIGIDO: REATIVIDADE GLOBAL E UNITÁRIA) */}
+          {/* DASHBOARD DE KPIs */}
           <section className="card" style={{ marginBottom: '32px' }}>
             <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ fontSize: 15, margin: 0, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -567,7 +554,6 @@ export default function AiBreakdownPage() {
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: TOKENS.textMuted, marginBottom: 8 }}>Vendas/Mês Projetada (un/mês)</label>
-                  {/* CORRIGIDO: Input totalmente dinâmico sem travar em 100 */}
                   <input type="number" min="1" className="input-b2b" value={projectedVolume} onChange={e => setProjectedVolume(e.target.value)} />
                 </div>
                 <div>
@@ -624,7 +610,21 @@ export default function AiBreakdownPage() {
               {blocks.map(b => (
                 <div key={b.id} style={{ border: `1px solid ${TOKENS.borderLight}`, borderRadius: 12, overflow: 'hidden' }}>
                   <div style={{ background: TOKENS.bgCardElevated, padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3 style={{ fontSize: 14, margin: 0, fontWeight: 700 }}>{b.name}</h3>
+                    {editingBlockId === b.id ? (
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input type="text" className="input-b2b" value={editingBlockName} onChange={e => setEditingBlockName(e.target.value)} style={{ padding: '4px 8px', width: 200 }} />
+                        <button type="button" onClick={() => {
+                          if (!editingBlockName.trim()) return
+                          setBlocks(prev => prev.map(bl => bl.id === b.id ? { ...bl, name: editingBlockName.trim() } : bl))
+                          setEditingBlockId(null); setEditingBlockName('')
+                        }} className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 11 }}>OK</button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <h3 style={{ fontSize: 14, margin: 0, fontWeight: 700 }}>{b.name}</h3>
+                        <button onClick={() => { setEditingBlockId(b.id); setEditingBlockName(b.name) }} className="btn-ghost" style={{ fontSize: 11, padding: 2 }}>✏️</button>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
                       <span className="font-mono" style={{ fontSize: 14, fontWeight: 800 }}>Total: {brl(b.currentCost || 0)}</span>
                       <button onClick={() => handleRemoveBlock(b.id)} className="btn-ghost" style={{ color: TOKENS.danger }}>✕</button>
@@ -647,7 +647,7 @@ export default function AiBreakdownPage() {
                           <tr key={sub.id}>
                             <td>{sub.name}</td>
                             <td className="font-mono">{sub.quantity}</td>
-                            <td className="font-mono">{sub.scrapRate || 0}%</td>
+                            <td className="font-mono">{(sub as DetailedSubItem).scrapRate || 0}%</td>
                             <td className="font-mono" style={{ textAlign: 'right', fontWeight: 600 }}>{brl(sub.totalCost)}</td>
                             <td style={{ textAlign: 'right' }}><button onClick={() => handleRemoveSubItem(b.id, sub.id)} className="btn-ghost" style={{ color: TOKENS.danger }}>✕</button></td>
                           </tr>
