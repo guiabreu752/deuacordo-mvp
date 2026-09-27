@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'link'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 import {
@@ -582,7 +582,7 @@ export default function AiBreakdownPage() {
             </div>
           </section>
 
-          {/* FORMULÁRIOS DE ENTRADA (INVERTIDO: CUSTOS FIXOS PRIMEIRO) */}
+          {/* FORMULÁRIOS DE ENTRADA (CUSTOS FIXOS PRIMEIRO) */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '32px' }}>
             
             {/* 1. CUSTOS FIXOS (OPEX) */}
